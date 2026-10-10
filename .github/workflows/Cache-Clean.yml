@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 VIKINGYFY
+
+name: Cache-Clean
+
+on:
+  #自动清理：每周一早上4点（UTC 周日 20:00）
+  #⚠ 已用注释停用，不再删除，方便以后按需整段恢复。
+  #停用原因：ccache 是编译加速的关键，清掉之后下次编译要重跑 1.5~3 小时。
+  #   定时清缓存对本仓库（几个月才编一次）是负收益，改手动。
+  #   另外它不会触发编译，所以留着也无害 —— 纯粹是没必要。
+  #日常别乱点，只有 Actions 缓存快占满仓库配额时才用。
+  #需要恢复定时：把下面两行行首的 # 去掉。
+  #schedule:
+  #  - cron: 0 20 * * 0
+  #手动清理
+  workflow_dispatch:
+
+permissions: write-all
+
+env:
+  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Projects
+        uses: actions/checkout@main
+
+      - name: Cache Clean
+        run: gh cache delete --all
