@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 VIKINGYFY
+
+name: Auto-Clean
+
+#CI计划
+on:
+  #自动清理：每天早上5点（UTC 21:00 = 北京时间次日 05:00）
+  #⚠ 已用注释停用，不再删除，方便以后按需整段恢复。
+  #停用原因：这条定时是整套"自动全量重编"的源头 ——
+  #   它跑完后会把各产品线一起拉起，一次好几个固件同时在编；
+  #   而且本工作流下面的清理参数是 keep 0，会把运行记录和 Release 全部删光，
+  #   报错日志会被一起清掉、没法回溯。
+  #本仓库只维护亚瑟 + M2 两台设备，不需要每天全量重编。
+  #想清理时手动来跑一次即可（Actions → Auto-Clean → Run workflow）。
+  #需要恢复定时：把下面两行行首的 # 去掉。
+  #schedule:
+  #  - cron: 0 21 * * *
+  #手动清理
+  workflow_dispatch:
+
+permissions: write-all
+
+jobs:
+  auto_clean:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old Releases and Workflows
+        uses: ophub/delete-releases-workflows@main
+        with:
+          gh_token: ${{secrets.GITHUB_TOKEN}}
+          delete_releases: true
+          releases_keep_latest: 0
+          delete_tags: true
+          delete_workflows: true
+          workflows_keep_day: 0
