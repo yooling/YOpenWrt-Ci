@@ -1,0 +1,333 @@
+#兆能 ZN-M2（ZNM2）—— 无 WiFi 版
+#
+#【本文件定位：自包含清单】
+#结构照搬 uiYzzi 的 openwrt_jdcloud_re-ss-01_ci 思路：一台设备一份配置、内容写全。
+#加载链：本文件 → GENERAL.txt → Settings.sh 注入(luci/主题/高通参数) → make defconfig
+#
+#源码：VIKINGYFY/immortalwrt 与 LiBwrt/LibWrt 两条线共用这一份（由工作流给 SOURCE/BRANCH）
+#硬件：IPQ6000，512MB RAM + 128MB NAND，无 WiFi（原厂就没有无线模块），家里主路由
+#
+#与亚瑟两份的最大区别：亚瑟是 1G + eMMC（能跑 Docker、能当存储服务器），
+#M2 是 512MB + 128MB NAND —— 空间和内存都紧，所以那份配置里的大件（Docker 全套、
+#btrfs/NVMe、samba4、diskman）在这一份里全部不写。
+
+#======================= 一、平台与设备 =======================
+CONFIG_TARGET_qualcommax=y
+CONFIG_TARGET_qualcommax_ipq60xx=y
+CONFIG_TARGET_MULTI_PROFILE=y
+CONFIG_TARGET_PER_DEVICE_ROOTFS=y
+CONFIG_TARGET_ROOTFS_INITRAMFS=n
+
+#只出 M2 这一台。=n 不能省 —— defconfig 会把未显式关闭的设备一起编进来。
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_zn_m2=y
+#---- 京东云/亚瑟系列：本份不出（那是另一份配置的活）----
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_jdcloud_re-ss-01=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_jdcloud_re-cs-02=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_jdcloud_re-cs-07=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_redmi_ax5-jdcloud=n
+#---- 其余全部关闭 ----
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_qihoo_360v6=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_anysafe_e1=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_cmiot_ax18=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_philips_ly1800=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_sy_y6010=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_dptech_ap3000-2c=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_glinet_gl-ax1800=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_glinet_gl-axt1800=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_linksys_mr7350=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_linksys_mr7500=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_netgear_rbx350=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_netgear_rbr350=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_netgear_rbs350=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_netgear_wax214=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_netgear_wax610=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_netgear_wax610y=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_tplink_eap610-outdoor=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_tplink_eap620-hd-v2=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_tplink_eap620-hd-v3=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_tplink_eap623-outdoor-hd-v1=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_tplink_eap623od-hd-v1=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_tplink_eap625-outdoor-hd-v1=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_redmi_ax5=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_xiaomi_ax1800=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_link_nn6000-v1=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_link_nn6000-v2=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_yuncore_fap650=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_kt_ar06-012h=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_lg_gapd-7500=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_mikrotik_chateau-5g-r17-ax=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_8devices_mango-dvk=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_alfa-network_ap120c-ax=n
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_cambiumnetworks_xe3-4=n
+
+#======================= 二、参数调整 =======================
+CONFIG_CCACHE=y
+CONFIG_DEVEL=y
+CONFIG_FEED_video=n
+#pon（无源光网络）feed 用不到，关掉可以少拉一批驱动和用户态包
+CONFIG_FEED_pon_drivers=n
+CONFIG_FEED_pon_userspace=n
+
+#======================= 三、无 WiFi：关掉无线驱动 + 整条无线栈 =======================
+#ipq60xx 各机型的 DEFAULT_PACKAGES 里自带 ath11k 与对应固件，不显式关会被拉进固件。
+CONFIG_PACKAGE_kmod-ath11k=n
+CONFIG_PACKAGE_kmod-ath11k-ahb=n
+CONFIG_PACKAGE_kmod-ath11k-pci=n
+CONFIG_PACKAGE_ath11k-firmware-ipq6018=n
+CONFIG_PACKAGE_ath11k-firmware-qcn9074=n
+#★真实包名带 -ddwrt 后缀，上面的通用名匹配不到，两个都写才关得干净
+CONFIG_PACKAGE_ath11k-firmware-ipq6018-ddwrt=n
+CONFIG_PACKAGE_iwinfo=n
+#---- ★整条无线栈：只关驱动的话，「网络 → 无线」菜单照样会冒出来 ----
+#LuCI 该菜单的显示条件是「/etc/config/wireless 里有 wifi-device 段」，而生成这个文件的
+#  是 wifi-scripts 提供的 /sbin/wifi（读 /etc/board.json 的 wlan 段）。
+#  关闭总开关 wpad-openssl 即可连带关掉 hostapd-common 与 wifi-scripts。
+#  （完整原理与实测现象写在 JDCloud-noWiFi.txt 第三节，这里不重复。）
+CONFIG_PACKAGE_wpad-openssl=n
+CONFIG_PACKAGE_hostapd-common=n
+CONFIG_PACKAGE_wifi-scripts=n
+#※rpcd-mod-iwinfo / libiwinfo* 关不掉（luci-mod-network 硬依赖），也不需要关；详见亚瑟那份。
+CONFIG_PACKAGE_cpufreq=y
+#关掉的是「无线」，不是「NSS」：NSS 数据面卸载来自 DEFAULT_PACKAGES，有线转发照样卸载。
+#
+#ath11k 内存档位与 NSS 固件版本是 Kconfig choice，不写在这里，由 Scripts/Settings.sh 裁定
+#（本份是 noWiFi → ath11k 512M 档 + NSS 11.4 固件）。
+#M2 无 WiFi，512M 档恰好也是 ZqinKing 那份 zn_m2 配置用的档位。
+
+#======================= 四、内核模块 =======================
+#---- IPQ 平台通用：NSS 卸载 / DSA 交换 / MTD 写入 ----
+CONFIG_PACKAGE_kmod-dsa=y
+CONFIG_PACKAGE_kmod-mtd-rw=y
+CONFIG_PACKAGE_kmod-fuse=y
+CONFIG_PACKAGE_kmod-inet-mptcp-diag=y
+#---- 隧道与转发：代理、VPN 都依赖 ----
+CONFIG_PACKAGE_kmod-tun=y
+CONFIG_PACKAGE_kmod-dummy=y
+CONFIG_PACKAGE_kmod-veth=y
+CONFIG_PACKAGE_kmod-bonding=y
+CONFIG_PACKAGE_kmod-wireguard=y
+CONFIG_PACKAGE_kmod-inet-diag=y
+CONFIG_PACKAGE_kmod-netlink-diag=y
+#---- nft 全家桶：nftables 规则、透明代理（nikki/mihomo）、NSS 卸载都要 ----
+CONFIG_PACKAGE_kmod-nft-core=y
+CONFIG_PACKAGE_kmod-nft-nat=y
+CONFIG_PACKAGE_kmod-nft-offload=y
+CONFIG_PACKAGE_kmod-nft-socket=y
+CONFIG_PACKAGE_kmod-nft-tproxy=y
+CONFIG_PACKAGE_kmod-nft-arp=y
+CONFIG_PACKAGE_kmod-nft-bridge=y
+CONFIG_PACKAGE_kmod-nft-connlimit=y
+CONFIG_PACKAGE_kmod-nft-dup-inet=y
+CONFIG_PACKAGE_kmod-nft-fib=y
+CONFIG_PACKAGE_kmod-nft-netdev=y
+CONFIG_PACKAGE_kmod-nft-queue=y
+CONFIG_PACKAGE_kmod-nft-xfrm=y
+CONFIG_PACKAGE_kmod-nf-nat=y
+CONFIG_PACKAGE_kmod-nf-nat6=y
+#fullcone：上游已用 SONiC 方案替换 legacy fullcone，apk 体系下旧包名会致命冲突，
+#  详见 JDCloud-WiFi.txt 同名段落的完整说明。
+CONFIG_PACKAGE_fullconenat-sonic=y
+#---- 内存压缩：512MB 的 M2 靠这个撑住 ----
+CONFIG_PACKAGE_zram-swap=y
+CONFIG_PACKAGE_kmod-lib-lz4=y
+CONFIG_KERNEL_ZRAM_BACKEND_LZ4=y
+CONFIG_KERNEL_ZRAM_DEF_COMP_LZ4=y
+#---- 文件系统：M2 一个都不装 ----
+#btrfs / ksmbd / NVMe / ATA / 声卡 / OVPN 这些不写 —— M2 是 NAND + 512MB，
+#既没有 NVMe 插槽、也跑不动网络存储服务，写上去只是白占空间。
+#★ext4 / f2fs / vfat / exfat 也一并去掉：这四种是给「外接盘」准备的格式，
+#  而 **ZN-M2 没有 USB 口、也没有任何外接盘位**，系统本身就跑在 NAND（ubifs）上，
+#  装了只是白占内核体积和 NAND 空间。
+#  京东云亚瑟有 USB 口，这四种格式保留在它自己那两份配置里（=y）。
+#  恢复：把 =n 改回 =y（先确认 GENERAL.txt 里没有同名键 —— 有则以 GENERAL 为准）。
+CONFIG_PACKAGE_kmod-fs-ext4=n
+CONFIG_PACKAGE_kmod-fs-f2fs=n
+CONFIG_PACKAGE_kmod-fs-vfat=n
+CONFIG_PACKAGE_kmod-fs-exfat=n
+#---- USB：整组不装 ----
+#============================================================================
+#▲▲为什么这里全部写 =n，而不是把行注释掉（踩过的坑，别改回去）
+#  target/linux/qualcommax/Makefile 的 DEFAULT_PACKAGES 自带一整套包：
+#    autocore automount cpufreq e2fsprogs f2fs-tools losetup luci uboot-envtools wpad-openssl
+#    kmod-fs-ext4 kmod-fs-f2fs kmod-usb3 kmod-usb-dwc3 kmod-usb-dwc3-qcom
+#    kmod-usb-serial-qualcomm ...
+#  在机型配置里把行「注释掉」= 这一行不存在 = 用 target 的默认值，包照样进固件。
+#  实证（26.10.09 两版 ZNM2 固件的 manifest 对比）：
+#    注释掉的 kmod-usb3 / kmod-fs-ext4 / automount / e2fsprogs … 一个都没少；
+#    而**不在** DEFAULT_PACKAGES 里的 blkid / fdisk / parted / exfat-fsck / exfat-mkfs /
+#    sfdisk 确实消失了（连带 libfdisk1 / libmount1 / libparted / musl-fts 也没了）。
+#  → 想真正去掉，唯一办法就是显式写 =n。
+#============================================================================
+#★兆能 ZN-M2 没有 USB 口，控制器 / 存储 / 网卡 / 工具全部不装。
+#  京东云亚瑟有 USB 口，这份清单在它那两份配置里是 =y。
+#  ▲GENERAL.txt 里这些键也已下放到机型层（否则它后加载会把 =n 反向塞回 =y，这是踩过的坑）。
+#  万一以后要在 M2 上用 USB（比如 USB 网卡做 WAN）：把 =n 改回 =y，并按 USB-WAN.md 加网卡驱动。
+CONFIG_PACKAGE_kmod-usb3=n
+CONFIG_PACKAGE_kmod-usb-core=n
+CONFIG_PACKAGE_kmod-usb-dwc3=n
+CONFIG_PACKAGE_kmod-usb-dwc3-qcom=n
+CONFIG_PACKAGE_kmod-usb-ehci=n
+CONFIG_PACKAGE_kmod-usb-ohci=n
+CONFIG_PACKAGE_kmod-usb-uhci=n
+CONFIG_PACKAGE_kmod-usb-serial-qualcomm=n
+CONFIG_PACKAGE_kmod-usb-storage=n
+CONFIG_PACKAGE_kmod-usb-storage-extras=n
+CONFIG_PACKAGE_kmod-usb-storage-uas=n
+CONFIG_PACKAGE_kmod-usb-audio=n
+CONFIG_PACKAGE_usb-modeswitch=n
+CONFIG_PACKAGE_usbmuxd=n
+CONFIG_PACKAGE_usbutils=n
+
+#======================= 五、存储与分区工具 =======================
+#★同一条理由：M2 没有外接盘位，分区 / 格式化 / 挂载这类工具全部不装。
+#  京东云亚瑟要接 U 盘和移动硬盘，这些都在它自己那两份配置里（=y）。
+#  其中 automount / e2fsprogs / f2fs-tools / block-mount 也在 DEFAULT_PACKAGES 里，
+#  所以同样必须显式 =n（理由见上面 USB 段那条长注释）。
+CONFIG_PACKAGE_block-mount=n
+CONFIG_PACKAGE_e2fsprogs=n
+CONFIG_PACKAGE_f2fs-tools=n
+CONFIG_PACKAGE_parted=n
+CONFIG_PACKAGE_blkid=n
+CONFIG_PACKAGE_lsblk=n
+CONFIG_PACKAGE_fdisk=n
+CONFIG_PACKAGE_sfdisk=n
+CONFIG_PACKAGE_exfat-fsck=n
+CONFIG_PACKAGE_exfat-mkfs=n
+CONFIG_PACKAGE_automount=n
+#nand-utils 保留：M2 本身就是 NAND，nanddump / flash_erase 这类工具对它是正经有用的。
+#autocore 保留：虽然也在 DEFAULT_PACKAGES 里，但它是 IPQ 平台的硬件信息 / 频率支持，有用。
+#（manifest 里还出现过 kmod-fs-ntfs3 / ntfs3-mount，不在上面这份 DEFAULT_PACKAGES 列表里，
+#  来源待查，暂时不动 —— 它是 NTFS 支持，同样属于"没外接盘就用不上"的一类。）
+CONFIG_PACKAGE_nand-utils=y
+CONFIG_PACKAGE_autocore=y
+#usbmuxd / libimobiledevice（iPhone USB 共享）/ usbutils（lsusb）不装：M2 没有 USB 口。
+#gdisk/cgdisk/sgdisk（GPT 分区）、mmc-utils、nvme-cli/smartmontools 不装：
+#M2 是 NAND（无 eMMC/NVMe），这些工具用不上。
+
+#======================= 六、基础系统与工具 =======================
+CONFIG_PACKAGE_curl=y
+CONFIG_PACKAGE_ca-bundle=y
+CONFIG_PACKAGE_htop=y
+CONFIG_PACKAGE_nano=y
+CONFIG_PACKAGE_dmesg=y
+CONFIG_PACKAGE_zoneinfo-asia=y
+CONFIG_PACKAGE_xz-utils=y
+CONFIG_PACKAGE_bash=y
+CONFIG_PACKAGE_iperf3=y
+CONFIG_PACKAGE_ip-full=y
+CONFIG_PACKAGE_dnsmasq-full=y
+#dnsmasq 与 dnsmasq-full 互斥，装上 full 就必须把基础版关掉
+# CONFIG_PACKAGE_dnsmasq is not set
+CONFIG_PACKAGE_openssh-keygen=y
+CONFIG_PACKAGE_openssh-sftp-server=y
+CONFIG_PACKAGE_openssl-util=y
+CONFIG_PACKAGE_stuntman-client=y
+CONFIG_PACKAGE_proto-bonding=y
+#coremark（跑分）不装：M2 上偶尔跑一次用命令行版就行，不值得常驻。
+
+#======================= 八、插件清单（M2 侧，比亚瑟克制）=======================
+#★本机是 128MB NAND，取舍标准比亚瑟严格得多，同样分三档：
+#    8.1  =y  主路由日常必需，直接进固件（数量刻意压到最少）
+#    8.2  =m  冷门 / 用不上但可能有一天想要的，只编包不进固件
+#    8.3  =n  明确不要（见第九节）
+#参考基准：darkrain88 给 zn_m2 只留了 nikki 一个设备级包（它的 GENERAL 虽然写着一堆 =m，
+#  但没被设备单独挑出来的都不会进这台设备的固件）。我们比它多留了几项主路由要用的。
+#======================= 8.1 日常刚需：直接进固件 =======================
+#科学上网只用 nikki（openclash 与它抢 7890 端口和防火墙规则，同时装大概率打架）
+CONFIG_PACKAGE_luci-app-nikki=y
+CONFIG_PACKAGE_luci-i18n-nikki-zh-cn=y
+#DDNS：主路由要有公网域名回连能力，这一项体积很小
+#★2026-10-09 停用：M2 这台用不到 —— 它是纯内网主路由，不需要从公网靠域名回连设备本身。
+#  京东云亚瑟那两份保留 =y（JDCloud-WiFi.txt / JDCloud-noWiFi.txt 都写着 luci-app-ddns-go=y）。
+#  恢复：把下面这行取消注释。
+#CONFIG_PACKAGE_luci-app-ddns-go=y
+#autoreboot：参考配置里共识度最高的一项（7 份都带），定时重启兜底
+CONFIG_PACKAGE_luci-app-autoreboot=y
+#upnp：内网设备自动开端口，主路由常规功能
+CONFIG_PACKAGE_luci-app-upnp=y
+
+#======================= 8.2 冷门 / 以后也许会用：=m，只编包不进固件 =======================
+#改 =m 而不是 =n 的理由：编出来的 apk 会被 WRT-CORE.yml 收进 Release 的 Packages-extra 包，
+#  哪天真需要时 apk add 装上即可，不必为它重编一遍固件 —— 对 NAND 紧张又不想失去可能性的
+#  M2 来说，这一档最划算（不占固件空间，但仍留了后路）。
+#  netwizard：首次上手的向导，配过一次之后基本不再打开
+CONFIG_PACKAGE_luci-app-netwizard=m
+#  natmapt：NAT 打洞自动端口映射，只在中转、内网穿透场景用得上
+CONFIG_PACKAGE_luci-app-natmapt=m
+#  mini-diskmanager：磁盘分区管理。M2 没有 USB 口、也不挂外部盘，平时用不上，
+#    真要管理分区时再装它
+CONFIG_PACKAGE_luci-app-mini-diskmanager=m
+#★关于 ttyd：网页终端在救砖场景挺有用，一度想放在 =m 这一档。但第九节「小工具：非必要」
+#  里已经写死了 luci-app-ttyd=n，同一文件里后出现的覆盖先出现的，这里写 =m 也压不过它。
+#  M2 按「空间优先」取舍，维持 =n；真要网页终端时改第九节那一行即可。
+
+#======================= 九、减法：NAND 装不下的 / 用不上的 =======================
+#★本节之前形同虚设：加载顺序是「机型配置 → GENERAL.txt」，GENERAL 在后会覆盖机型层，
+#  它里面写的 samba4 / partexp / gecoosac / wolultra / statistics 五个 =y 会把这里对应的
+#  =n 全部翻回 =y —— 也就是说 M2 的减法一句都没生效，这些包照样进固件。
+#  现已把这些「并非三份配置一致同意」的包从 GENERAL 下放到各机型层（详见 GENERAL.txt 的
+#  「为什么这里越来越短」一节），本节的 =n 才真正落地。改动前后对比：
+#      改前实际进固件的 luci 包：20 个（配置看着却只有 7 个 =y，对不上就是因为这个坑）
+#      改后实际进固件的 luci 包：见本文件第八节 8.1 那 5 个 + GENERAL 里的少数几项
+#---- 存储类服务与工具：NAND 空间紧张，全关 ----
+CONFIG_PACKAGE_luci-app-samba4=n
+#注意包名是 samba4-server，不带 luci-app 前缀 —— 「luci-app-samba4-server」这个包不存在。
+CONFIG_PACKAGE_samba4-server=n
+CONFIG_PACKAGE_luci-app-partexp=n
+CONFIG_PACKAGE_luci-app-diskman=n
+CONFIG_PACKAGE_kmod-fs-btrfs=n
+CONFIG_PACKAGE_kmod-fs-ksmbd=n
+CONFIG_PACKAGE_kmod-nvme=n
+CONFIG_PACKAGE_kmod-ata-ahci=n
+CONFIG_PACKAGE_kmod-ata-core=n
+CONFIG_PACKAGE_kmod-sound-core=n
+#kmod-usb-audio 不再单独写 =n：USB 整组已不装（见第四节），写了也是重复
+CONFIG_PACKAGE_kmod-ovpn-backports=n
+CONFIG_PACKAGE_libnvme=n
+CONFIG_PACKAGE_nvme-cli=n
+CONFIG_PACKAGE_smartmontools=n
+CONFIG_PACKAGE_smartmontools-drivedb=n
+CONFIG_PACKAGE_mmc-utils=n
+CONFIG_PACKAGE_gdisk=n
+CONFIG_PACKAGE_cgdisk=n
+CONFIG_PACKAGE_sgdisk=n
+CONFIG_PACKAGE_cfdisk=n
+
+#---- Docker：512MB + NAND 跑不动，必关 ----
+CONFIG_PACKAGE_docker=n
+CONFIG_PACKAGE_dockerd=n
+CONFIG_PACKAGE_docker-compose=n
+CONFIG_PACKAGE_luci-app-dockerman=n
+
+#---- 监控：M2 是 128MB NAND，只留 vnstat2，关掉 collectd ----
+#collectd 每 30 秒采样写一次 rrd，对 NAND 的磨损和空间都不友好；亚瑟是 eMMC，那边照常开。
+#  vnstat2 只在整点写一次数据库，可以留。
+CONFIG_PACKAGE_luci-app-statistics=n
+CONFIG_PACKAGE_collectd=n
+CONFIG_PACKAGE_rrdtool1=n
+
+#---- 小工具：非必要 ----
+CONFIG_PACKAGE_luci-app-gecoosac=n
+CONFIG_PACKAGE_luci-app-wolultra=n
+CONFIG_PACKAGE_luci-app-openlist2=n
+CONFIG_PACKAGE_luci-app-timecontrol=n
+CONFIG_PACKAGE_luci-app-travelmate=n
+CONFIG_PACKAGE_luci-app-ttyd=n
+#watchcat 主程序包在源码树里已消失（packages feed 的官方版被 smpackage 同名清理删掉、
+#smpackage 版又因 feed 优先级装不上），开着 luci-app-watchcat 会在 package/install 阶段中断编译。
+#兆能 M2 本来就不需要，保持关闭；原因详见 JDCloud-WiFi.txt 第九节。
+CONFIG_PACKAGE_luci-app-watchcat=n
+
+#---- 保持单一代理栈（只用 nikki）----
+CONFIG_PACKAGE_luci-app-homeproxy=n
+CONFIG_PACKAGE_luci-app-openclash=n
+CONFIG_PACKAGE_luci-app-passwall=n
+CONFIG_PACKAGE_luci-app-passwall2=n
+#另外这几项依赖缺失会中断编译（apk 缺依赖是致命错误），详见 JDCloud-WiFi.txt 的说明
+CONFIG_PACKAGE_luci-app-mosdns=n
+CONFIG_PACKAGE_luci-app-netspeedtest=n
+CONFIG_PACKAGE_luci-app-tailscale=n
+
+#移除用不到的
+CONFIG_PACKAGE_luci-app-attendedsysupgrade=n
+CONFIG_PACKAGE_luci-app-wol=n
