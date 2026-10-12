@@ -56,7 +56,12 @@ Config/
 | 项目                                 | JDCloud-WiFi | JDCloud-noWiFi       | ZNM2-noWiFi                           |
 | ---------------------------------- | ------------ | -------------------- | ------------------------------------- |
 | ath11k / 无线固件                      | 开（机型默认带）     | **显式 `=n` 关掉**       | **显式 `=n` 关掉**                        |
-| Docker 全套                          | 关            | **`=m`**（按需 apk add） | **关**（512MB + NAND 跑不动）               |
+| Docker 全套                          | **`=m`**（按需 apk add） | **`=m`**（按需 apk add） | **关**（512MB + NAND 跑不动）               |
+| 代理栈                                | nikki + openclash | nikki + openclash  | **只用 nikki**（两者抢 7890 与防火墙规则）      |
+| 网络设置向导（netwizard）                 | 开            | 开                    | 开（三个都要 —— 配网络的第一入口）                |
+| 首页汇总页（quickstart）                 | 开            | 开                    | **关**（128MB NAND 不值得多装一套前端）          |
+| AdGuard Home                       | 开（`INCLUDE_binary=n`） | 开（同左）           | **关**（内存要跟 nikki 抢，DNS 功能也重叠）       |
+| eMMC 健康监测                         | 开            | 开                    | **关**（M2 是 NAND、机器上没有 eMMC）         |
 | btrfs / NVMe / ATA / smartmontools | 开            | 开                    | **关**                                 |
 | samba4 / diskman / partexp         | 开            | 开                    | **关**                                 |
 | 多 WAN（mwan3）                       | 无            | 无                    | **已移除**（源里没有这个包 + 用不到，整节删掉）         |
@@ -75,6 +80,31 @@ Config/
 > 亚瑟有 USB 口，这些东西全部保留在它自己那两份配置里（GENERAL.txt 里已下放，不会反向塞回 M2）。  
 > ▲注意：ZNM2 那份里这些项写的是**显式 `=n`** 而不是注释掉 —— 它们大多在 target 的  
 > `DEFAULT_PACKAGES` 里，注释掉等于用默认值、照样编进固件（踩过，详见下面 GENERAL 纪律段）。
+
+### 插件取舍（2026-10-12 定）
+
+对照 ZqinKing / VIKINGYFY / laipeng668 / breeze303 / darkrain88 五份配置逐项过了一遍，结论如下：
+
+| 功能 | 包名 | 亚瑟两份 | M2 | 判断依据 |
+| --- | --- | --- | --- | --- |
+| 网络设置向导 | `luci-app-netwizard` | **`=y`** | **`=y`** | 拨号 / DHCP / 静态 IP / **旁路由** 一键切换。原来写 `=m` 等于刷完看不见（`=m` 不进固件），而"第一次配网络"恰恰最需要它。界面只有几十 KB |
+| 首页汇总页 | `quickstart` | **`=y`** | `=n` | ZqinKing 京东云固件的首页就是它。M2 的 128MB NAND 不值得为一套前端资源让路 |
+| AdGuard Home | `luci-app-adguardhome` | **`=y`**（`INCLUDE_binary=n`） | `=n` | core 30–40MB、常驻 50–150MB。亚瑟 1G 内存扛得住；M2 要跟 nikki 抢内存，且 nikki 自带 DNS，功能重叠 |
+| eMMC 健康 | `luci-app-emmc-health` | **`=y`** | `=n` | 读 eMMC 的 EXT_CSD。**M2 是 NAND、机器上没有 eMMC**，装了页面也是空的（ZqinKing 给 zn_m2 的配置里同样没有这项） |
+| OAF 应用过滤 | `open-app-filter` | 不做 | 不做 | **与 NSS 硬件加速冲突** —— DPI 逐包匹配走慢路径、绕过 NSS 快转，千兆跑不满。laipeng668 的配置里明写着 `luci-app-oaf=n` |
+| iStore 增强 | `luci-app-istorex` | 不做 | 不做 | iStore 生态整个围绕 opkg 建，而源码已迁 apk，兼容性存疑；且要联网拉全量元数据 |
+| Docker | `docker` / `dockerd` / `luci-app-dockerman` | **`=m`** | `=n` | 亚瑟后续要跑容器。整组约 45–55MB，`=y` 会把固件撑大一倍；`=m` 只编包不进 rootfs，需要时从 Release 的差集包 `apk add`。第四节的 `kmod-br-netfilter` / `kmod-ipt-nat6` / `kmod-nf-conntrack-netlink` 与 cgroup 选项已一并打开 —— **cgroup 是内核编译开关，事后 apk add 装不回来，必须现在开** |
+
+> ⏱ **AdGuard Home 会让编译变慢**：`adguardhome` 本体是 Go 写的（`DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle`），
+> 编它要把 Go 工具链跑一遍，比普通 LuCI 插件耗时明显。ZqinKing 也是照样编的，属于可接受代价；
+> 实在不想等就把 `luci-app-adguardhome` 那两行注释掉。
+>
+> ⚠️ **新增的三个源都不能走 feeds**：`quickstart` / `adguardhome` 虽然已在 kenzok8/small-package
+> （即 smpackage feed）里，但 `feeds install -a` 时官方 feed 先占住包名、官方同名包又被 WRT-CORE.yml
+> 的「删官方同名包」删掉，包会从源码树里彻底消失 —— 那 119 个包就是这么没的，`adguardhome` 正在名单里。
+> 所以这三个都改用 `Packages.sh` 的 `UPDATE_PACKAGE` 直接落到 `wrt/package/`（优先级高于 feeds，
+> 且 Custom Packages 步骤排在 feeds install 之后）。`luci-app-dockerman` 同理：smpackage 那份被
+> WRT-CORE.yml 删了、官方 luci feed 从来没有它。
 
 ### 主题为什么是 argon（2026-10-09 定）
 
