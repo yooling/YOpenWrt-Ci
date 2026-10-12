@@ -224,6 +224,36 @@ UPDATE_PACKAGE_OPT "openclash" "vernesong/OpenClash" "dev" "pkg"
 UPDATE_PACKAGE_OPT "passwall" "Openwrt-Passwall/openwrt-passwall" "main" "pkg"
 UPDATE_PACKAGE_OPT "passwall2" "Openwrt-Passwall/openwrt-passwall2" "main" "pkg"
 
+#---- 2026-10-12 新增：首页汇总页 / AdGuard Home / eMMC 健康 / Docker 管理界面 ----
+#▲kenzok8/small-package 其实早就作为 smpackage feed 注入了（WRT-CORE.yml 的 Update Feeds），
+#  但走 feed 有个坑：feeds install -a 时 packages/luci 排在 smpackage 前面先占住包名，
+#  而官方版又被 WRT-CORE.yml 的「删官方同名包」那步 rm 掉了 —— 两边都装不上，
+#  包从源码树里彻底消失（JDCloud-WiFi.txt 第九节记的那 119 个包就是这么没的，
+#  adguardhome 正在名单里）。
+#  所以这里不走 feeds，直接用 UPDATE_PACKAGE 把包落到 wrt/package/ 下：这个目录优先级高于
+#  feeds，且 Custom Packages 步骤排在 feeds install 之后，不会再被那轮清理删掉。
+#★pkg 模式的 find 用 -iname "*名字*"，一次调用会把同名前缀的包一起抽出来：
+#  "quickstart"  → quickstart + luci-app-quickstart
+#  "adguardhome" → adguardhome + luci-app-adguardhome
+UPDATE_PACKAGE_OPT "quickstart" "kenzok8/small-package" "main" "pkg"
+UPDATE_PACKAGE_OPT "adguardhome" "kenzok8/small-package" "main" "pkg"
+#eMMC 健康监测：单包仓库，仓库根目录就是 Makefile，用 name 模式把目录重命名为包名。
+UPDATE_PACKAGE_OPT "luci-app-emmc-health" "adminchenyu/eMMC-Health" "main" "name"
+#  坑：它的 Makefile 声明了 +luci-js-deps 依赖，但 luci-js-deps 在当前源码树里不存在
+#  （immortalwrt 与 openwrt 的 luci feed 里都没有这个包），apk 会在 package/install 阶段报
+#  "unable to select packages: luci-js-deps" 把整个编译打断。ZqinKing 也是这么处理的 ——
+#  它专门写了 fix_emmc_health_luci_js_deps() 干同一件事。
+#  luci-js-deps 只是「把 JS 依赖打进包」的构建机制，去掉不影响页面功能。
+if [ -f ./luci-app-emmc-health/Makefile ]; then
+	sed -i '/^[[:space:]]*DEPENDS:=/ s/[[:space:]]*+luci-js-deps//g' ./luci-app-emmc-health/Makefile
+	echo "已移除 luci-app-emmc-health 的 luci-js-deps 依赖（当前源码树里没有这个包）"
+fi
+#Docker 管理界面：WRT-CORE.yml 把 smpackage 的 luci-app-dockerman 删了、官方 luci feed 里
+#  又没有 dockerman（它从来就不在官方），所以这个界面同样从源码树里消失了。
+#  docker / dockerd / containerd / runc 本体在 packages feed 里是好的（WRT-CORE.yml 特意
+#  保留官方已验证的 29.6.1），缺的只是这个 LuCI 界面 —— 从这里补。
+UPDATE_PACKAGE_OPT "luci-app-dockerman" "lisaac/luci-app-dockerman" "master"
+
 UPDATE_PACKAGE_OPT "luci-app-tailscale" "asvow/luci-app-tailscale" "main"
 
 #UPDATE_PACKAGE_OPT "athena-led" "unraveloop/JDC-AX6600-Athena-LED-Controller" "main"
