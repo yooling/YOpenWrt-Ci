@@ -324,10 +324,19 @@ CONFIG_DOCKER_OPTIONAL_FEATURES=y
 #  等于「先精简，用着缺了再补」，不用来回重编固件。这套「=m 为主」的写法正是参考
 #  darkrain88（那份配置已在本机亚瑟上验证可用）：它的 GENERAL 里 openclash / partexp /
 #  samba4 / ddns-go / gecoosac / easytier / lucky 全都是 =m，只在需要它们的设备上再挑出来装。
-#======================= 8.1 科学上网：只用 nikki =======================
-#openclash 与 nikki 抢 7890 端口和防火墙规则，同时装大概率打架
+#======================= 8.1 科学上网：nikki + openclash 双栈 =======================
+#★2026-10-12 定：亚瑟两份（WiFi / noWiFi）统一「nikki 为主 + openclash 备用」，
+#  与 JDCloud-WiFi.txt 拉齐。M2 那边仍然只留 nikki 一个（ZNM2-noWiFi.txt）。
+#  clash 内核不进固件 —— openclash 自己会在运行时下载到 /etc/openclash/core，
+#  所以这里装的只是界面 + ruby 解释器（ruby 约 9MB，是 openclash 的真实代价）。
+#  两个都装了也不能同时开，运行时有两条硬约束（详见 JDCloud-WiFi.txt 第八节顶部）：
+#    1) 默认端口冲突：mihomo 与 clash 的 mixed-port 都是 7890，先把其中一个挪开
+#       （建议把 openclash 的「混合端口」改成 7891）；
+#    2) 两者都往 nftables 写规则、都接管 dnsmasq，同时开会互相清对方的规则。
 CONFIG_PACKAGE_luci-app-nikki=y
 CONFIG_PACKAGE_luci-i18n-nikki-zh-cn=y
+CONFIG_PACKAGE_luci-app-openclash=y
+CONFIG_PACKAGE_luci-i18n-openclash-zh-cn=y
 
 #======================= 8.2 日常刚需：直接进固件 =======================
 #依据：12 份针对 IPQ60xx / M2 / 亚瑟的参考配置做频次统计，下面这些是多位作者的共识项。
@@ -346,11 +355,25 @@ CONFIG_PACKAGE_luci-app-autoreboot=y
 CONFIG_PACKAGE_luci-app-upnp=y
 CONFIG_PACKAGE_luci-app-gecoosac=y
 
+#---- 2026-10-12 新增四项（与 JDCloud-WiFi.txt 完全一致，理由见那边）----
+#netwizard：网络设置向导，拨号 / 旁路由 / 静态 IP 一键切换。
+#  ★原先在 8.3 写成 =m，刷完固件菜单里找不到，还得手动 apk add —— 改回直接进固件。
+CONFIG_PACKAGE_luci-app-netwizard=y
+#quickstart：首页状态汇总 + 快捷入口（ZqinKing 京东云固件的首页就是它）
+CONFIG_PACKAGE_quickstart=y
+CONFIG_PACKAGE_luci-app-quickstart=y
+CONFIG_PACKAGE_luci-i18n-quickstart-zh-cn=y
+#AdGuard Home：DNS 级去广告。INCLUDE_binary=n —— core 不打进固件，首次打开时自己下载。
+CONFIG_PACKAGE_luci-app-adguardhome=y
+CONFIG_PACKAGE_luci-app-adguardhome_INCLUDE_binary=n
+CONFIG_PACKAGE_luci-i18n-adguardhome-zh-cn=y
+#eMMC 健康监测：亚瑟是 eMMC 才有的 EXT_CSD 寿命信息；M2 是 NAND，那份写 =n。
+CONFIG_PACKAGE_luci-app-emmc-health=y
+
 #======================= 8.3 冷门 / 有更好替代：=m，只编包不进固件 =======================
 #  statistics：collectd 每 30 秒写一次 rrd，要看历史曲线时装它一个就够
 CONFIG_PACKAGE_luci-app-statistics=m
-#  netwizard：首次上手的向导，配过一次之后基本不再打开
-CONFIG_PACKAGE_luci-app-netwizard=m
+#  netwizard 已移到 8.2 改 =y：它是配网络的第一入口，留在 =m 里刷完固件根本看不到。
 #  timecontrol：家长控制 / 定时断网，没有这需求就是纯占空间
 CONFIG_PACKAGE_luci-app-timecontrol=m
 #  natmapt：NAT 打洞自动端口映射，只在中转、内网穿透场景用得上
@@ -380,9 +403,9 @@ CONFIG_PACKAGE_luci-app-watchcat=n
 #  否则固件里 nikki 和 homeproxy 会并存、抢同一套防火墙规则。
 CONFIG_PACKAGE_luci-app-homeproxy=n
 CONFIG_PACKAGE_luci-app-passwall=n
-#openclash 与 nikki 抢 7890 端口，二选一。想换回 openclash：
-#把本行改成 =y，并把上面 luci-app-nikki 两行改成 =n。
-CONFIG_PACKAGE_luci-app-openclash=n
+#openclash 已在 8.1 打开 =y（与 nikki 并存，使用注意见 8.1 顶部注释）。
+#★这里绝不能再写 =n：本文件里第九节排在 8.1 之后，「后出现者胜」，写了就把前面的 =y 翻回去了
+#  —— 这正是当初 M2 那五个 =n 失效的同款坑（只不过方向反过来）。
 
 #以下 5 项依赖缺失会中断编译（源码已迁移 apk，缺依赖是致命错误而非警告）：
 #  luci-app-passwall2 / luci-app-mosdns → 依赖 v2ray-geoip、v2ray-geosite，

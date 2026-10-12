@@ -113,13 +113,16 @@ CONFIG_PACKAGE_kmod-nf-nat6=y
 #  已被删除，换成 fullconenat-sonic）。新包声明 CONFLICTS 掉 kmod-nft-fullcone 系列，
 #  而 apk 体系会把这种互斥变成致命错误，所以必须清掉旧包名，详见 WRT-CORE.yml 的说明。
 CONFIG_PACKAGE_fullconenat-sonic=y
-#---- Docker 依赖的内核模块（不跑容器，关闭；恢复 Docker 时要一并打开）----
+#---- Docker 依赖的内核模块 ----
+#★2026-10-12 改开：亚瑟后续要跑 Docker（第七节那批已改成 =m，需要时 apk add 装上）。
+#  这三个模块是内核包，事后虽然也能 apk add，但必须与当前内核版本严格匹配 —— 自己编出来
+#  的那一份最保险，而且模块本身只有几十 KB，开着不亏。已与 JDCloud-noWiFi.txt 拉齐。
 #kmod-veth / kmod-tun / kmod-nf-nat / kmod-nft-nat 上面已开，是代理栈也要用的，保留。
-#kmod-br-netfilter：只有 docker 的桥接 iptables 需要
-CONFIG_PACKAGE_kmod-br-netfilter=n
-#kmod-ipt-nat6 / kmod-nf-conntrack-netlink：只有 docker 与 conntrack 工具需要
-CONFIG_PACKAGE_kmod-ipt-nat6=n
-CONFIG_PACKAGE_kmod-nf-conntrack-netlink=n
+#kmod-br-netfilter：docker 的桥接 iptables 需要
+CONFIG_PACKAGE_kmod-br-netfilter=y
+#kmod-ipt-nat6 / kmod-nf-conntrack-netlink：docker 与 conntrack 工具需要
+CONFIG_PACKAGE_kmod-ipt-nat6=y
+CONFIG_PACKAGE_kmod-nf-conntrack-netlink=y
 #---- 存储与文件系统：eMMC 扩容、U 盘挂载、网络共享 ----
 #btrfs 保留（2026-10-10 决定，与 JDCloud-noWiFi.txt 拉齐）。
 #  澄清一点：eMMC 本身用不到 btrfs —— 系统分区是编译期就定好的 squashfs+overlay / ext4 / f2fs，
@@ -191,21 +194,22 @@ CONFIG_PACKAGE_kmod-usb-storage=y
 CONFIG_PACKAGE_kmod-usb-storage-extras=y
 CONFIG_PACKAGE_kmod-usb-storage-uas=y
 #---- Docker 的 cgroup 内核选项 ----
-#不跑容器，只给 docker 用的那几个关掉。这几个是内核编译开关、对镜像体积影响很小，
-#  所以按「注释禁用 + 留恢复说明」处理，不直接删。
+#★2026-10-12 全部打开，与 JDCloud-noWiFi.txt 拉齐。理由：这几个是**内核编译开关**，
+#  跟 CONFIG_PACKAGE_* 不一样 —— 事后 apk add 装不回来，要开只能重编固件。
+#  而它们对镜像体积影响很小（不往 rootfs 里塞文件），所以「现在就开、留着后路」最划算。
 #  以下保留不关：ARM_PMU / PERF_EVENTS（perf 等通用工具要用）、CFQ_GROUP_IOSCHED（IO 调度）、
 #  MEMCG_SWAP_ENABLED（zram-swap 依赖 memory cgroup 的 swap 记账）。
 CONFIG_KERNEL_ARM_PMU=y
 CONFIG_KERNEL_CFQ_GROUP_IOSCHED=y
-#CONFIG_KERNEL_CGROUP_DEVICE=y
-#CONFIG_KERNEL_CGROUP_FREEZER=y
-#CONFIG_KERNEL_CGROUP_HUGETLB=y
-#CONFIG_KERNEL_CGROUP_NET_PRIO=y
-#CONFIG_KERNEL_CGROUP_PERF=y
-#CONFIG_KERNEL_HUGETLBFS=y
-#CONFIG_KERNEL_HUGETLB_PAGE=y
+CONFIG_KERNEL_CGROUP_DEVICE=y
+CONFIG_KERNEL_CGROUP_FREEZER=y
+CONFIG_KERNEL_CGROUP_HUGETLB=y
+CONFIG_KERNEL_CGROUP_NET_PRIO=y
+CONFIG_KERNEL_CGROUP_PERF=y
+CONFIG_KERNEL_HUGETLBFS=y
+CONFIG_KERNEL_HUGETLB_PAGE=y
 CONFIG_KERNEL_MEMCG_SWAP_ENABLED=y
-#CONFIG_KERNEL_NET_CLS_CGROUP=y
+CONFIG_KERNEL_NET_CLS_CGROUP=y
 CONFIG_KERNEL_PERF_EVENTS=y
 
 #======================= 五、存储与分区工具 =======================
@@ -258,19 +262,27 @@ CONFIG_PACKAGE_openssl-util=y
 CONFIG_PACKAGE_stuntman-client=y
 CONFIG_PACKAGE_proto-bonding=y
 
-#======================= 七、Docker（不用，整组关闭）=======================
-#★砍 Docker 是本次瘦身的主力：docker + dockerd + docker-compose + luci-app-dockerman，
-#  连带 containerd / runc / tini / iptables-nft 全家桶 / bash / attr / libseccomp 等，
-#  合计约 45–55MB，占了与 dark 那份 48MB 差距的绝大部分。
-#  用不上就别留 —— 真要跑容器时把下面这些行取消注释即可（内核模块与 cgroup 选项见第四节的
-#  「Docker 依赖」两段，也要一并恢复）。
-#CONFIG_PACKAGE_docker=y
-#CONFIG_PACKAGE_dockerd=y
-#CONFIG_PACKAGE_docker-compose=y
-#CONFIG_PACKAGE_luci-app-dockerman=y
-#CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn=y
-#CONFIG_DOCKER_CGROUP_OPTIONS=y
-#CONFIG_DOCKER_OPTIONAL_FEATURES=y
+#======================= 七、Docker（改 =m：编包不进固件）=======================
+#★2026-10-12 定：亚瑟后续是要跑 Docker 的，所以这里不再是「不用就整组砍掉」，
+#  而是全部编成包、但不进 rootfs —— 需要时从 Release 的 Packages-extra 包里 apk add 装上，
+#  一两分钟的事，不用为此重编一遍固件。写法与 JDCloud-noWiFi.txt 完全一致。
+#  为什么必须是 =m 而不是「先注释、要用时再打开」：
+#    docker + dockerd + docker-compose + luci-app-dockerman 连带 containerd / runc / tini /
+#    iptables-nft 全家桶合计约 45–55MB，=y 会直接把固件撑大一倍；而 =m 只是把包编出来放到
+#    bin/packages，rootfs 一点不受影响，代价只是编译时间和 Release 里那个差集包变大。
+#  第四节的 kmod-br-netfilter / kmod-ipt-nat6 / kmod-nf-conntrack-netlink 与 cgroup 选项
+#  已一并打开（cgroup 那几个是内核编译开关，事后装不回来，必须现在开）。
+#  参考：ZqinKing 与 laipeng668 给亚瑟的配置里 docker 一律是 =m 而不是 =y。
+CONFIG_PACKAGE_docker=m
+CONFIG_PACKAGE_dockerd=m
+CONFIG_PACKAGE_docker-compose=m
+CONFIG_PACKAGE_luci-app-dockerman=m
+CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn=m
+CONFIG_DOCKER_CGROUP_OPTIONS=y
+CONFIG_DOCKER_OPTIONAL_FEATURES=y
+#iptables-nft、containerd、runc 等不用列 —— 它们是 docker 的 DEPENDS，defconfig 会自动选中。
+#▲luci-app-dockerman 的源不在 feeds 里：WRT-CORE.yml 删掉了 smpackage 的那份、官方 luci feed
+#  又没有，所以它本来会从源码树里消失。Packages.sh 里补了 lisaac/luci-app-dockerman。
 
 #======================= 八、插件清单 =======================
 #★本清单分三档，改动前先看清楚自己在动哪一档：
@@ -316,6 +328,31 @@ CONFIG_PACKAGE_luci-app-autoreboot=y
 CONFIG_PACKAGE_luci-app-upnp=y
 CONFIG_PACKAGE_luci-app-gecoosac=y
 
+#---- 2026-10-12 新增四项（对齐 ZqinKing 京东云固件的体验）----
+#netwizard：网络设置向导 —— PPPoE 拨号 / DHCP / 静态 IP / **旁路由模式** 一键切换。
+#  ★原先放在 8.3 写成 =m，结果刷完固件在菜单里根本找不到，还得手动 apk add 才出现。
+#    LuCI 界面只有几十 KB，而「第一次上手配网络」恰恰是最需要它的时候，改成直接进固件。
+CONFIG_PACKAGE_luci-app-netwizard=y
+#quickstart：LuCI 首页的状态汇总页 + 各功能快捷入口（ZqinKing 京东云固件的首页就是它）。
+#  ★源不在 feeds 里：small-package 虽已作为 smpackage feed 注入，但 feeds install 时
+#    官方 feed 先占名、官方同名包又被 WRT-CORE.yml 删掉，包会从源码树消失（那 119 个之一）。
+#    Packages.sh 里改用 UPDATE_PACKAGE 直接落到 wrt/package/ 下绕开这个坑。
+CONFIG_PACKAGE_quickstart=y
+CONFIG_PACKAGE_luci-app-quickstart=y
+CONFIG_PACKAGE_luci-i18n-quickstart-zh-cn=y
+#AdGuard Home：DNS 级去广告。
+#  ★INCLUDE_binary=n 是关键 —— 不把 core 打进固件（30–40MB），首次打开页面时自己下载。
+#    ZqinKing 五个机型的配置里全是这么写的；亚瑟 1G 内存 + 64G eMMC 扛得住 core 的开销。
+#    M2 那边不做（512M 内存 + 128M NAND，且与 nikki 自带的 DNS 功能重叠）。
+CONFIG_PACKAGE_luci-app-adguardhome=y
+CONFIG_PACKAGE_luci-app-adguardhome_INCLUDE_binary=n
+CONFIG_PACKAGE_luci-i18n-adguardhome-zh-cn=y
+#eMMC 健康监测：读 eMMC 的 EXT_CSD 寄存器，出寿命估算（life time）与 Pre-EOL 状态。
+#  ★只有亚瑟能用 —— M2 是 NAND、没有 EXT_CSD，装了页面是空的，所以 ZNM2 那份显式写 =n。
+#    体积可以忽略：依赖只有 luci-base + rpcd，产物是一个 JS 视图 + 2 个脚本。
+#    （Makefile 原本还依赖 luci-js-deps，源里没这个包，Packages.sh 里已 sed 掉。）
+CONFIG_PACKAGE_luci-app-emmc-health=y
+
 #======================= 8.3 冷门 / 有更好替代：=m，只编包不进固件 =======================
 #为什么是 =m 而不是删：WRT-CORE.yml 会拿 *.manifest 跟 bin/packages 做差集，
 #  把这些没进固件的包单独打成 Packages-extra-*.tar.gz 发在同一个 Release 里。
@@ -323,8 +360,7 @@ CONFIG_PACKAGE_luci-app-gecoosac=y
 #  正好对上「先精简，用着缺了再补」的打算。
 #  statistics：collectd 每 30 秒写一次 rrd，要看历史曲线时装它一个就够
 CONFIG_PACKAGE_luci-app-statistics=m
-#  netwizard：首次上手的向导，配过一次之后基本不再打开
-CONFIG_PACKAGE_luci-app-netwizard=m
+#  netwizard 已移到 8.2 改 =y：它是配网络的第一入口，留在 =m 里刷完固件根本看不到。
 #  timecontrol：家长控制 / 定时断网，没有这需求就是纯占空间
 CONFIG_PACKAGE_luci-app-timecontrol=m
 #  natmapt：NAT 打洞自动端口映射，只在中转、内网穿透场景用得上

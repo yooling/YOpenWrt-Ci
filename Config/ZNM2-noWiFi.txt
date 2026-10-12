@@ -245,13 +245,17 @@ CONFIG_PACKAGE_luci-i18n-nikki-zh-cn=y
 CONFIG_PACKAGE_luci-app-autoreboot=y
 #upnp：内网设备自动开端口，主路由常规功能
 CONFIG_PACKAGE_luci-app-upnp=y
+#netwizard：网络设置向导 —— 拨号 / DHCP / 静态 IP / 旁路由一键切换。
+#  ★从 8.2（=m）提到这里改 =y：它是「第一次上手配网络」的入口，而 =m 不进固件、
+#    刷完在菜单里根本看不到，还得 apk add 才出现 —— 那等于把这功能废了。
+#    LuCI 界面只有几十 KB，亚瑟那边同样是 =y，M2 没有理由省这一点。
+CONFIG_PACKAGE_luci-app-netwizard=y
 
 #======================= 8.2 冷门 / 以后也许会用：=m，只编包不进固件 =======================
 #改 =m 而不是 =n 的理由：编出来的 apk 会被 WRT-CORE.yml 收进 Release 的 Packages-extra 包，
 #  哪天真需要时 apk add 装上即可，不必为它重编一遍固件 —— 对 NAND 紧张又不想失去可能性的
 #  M2 来说，这一档最划算（不占固件空间，但仍留了后路）。
-#  netwizard：首次上手的向导，配过一次之后基本不再打开
-CONFIG_PACKAGE_luci-app-netwizard=m
+#  netwizard 已移到 8.1 改 =y：配网络的第一入口，留在 =m 里刷完固件看不到。
 #  natmapt：NAT 打洞自动端口映射，只在中转、内网穿透场景用得上
 CONFIG_PACKAGE_luci-app-natmapt=m
 #  mini-diskmanager：磁盘分区管理。M2 没有 USB 口、也不挂外部盘，平时用不上，
@@ -292,6 +296,24 @@ CONFIG_PACKAGE_gdisk=n
 CONFIG_PACKAGE_cgdisk=n
 CONFIG_PACKAGE_sgdisk=n
 CONFIG_PACKAGE_cfdisk=n
+
+#---- 亚瑟专属的三项：M2 全部关掉 ----
+#★2026-10-12 定：quickstart / adguardhome / emmc-health 在 JDCloud 两份配置里都是 =y，
+#  M2 一律 =n。写 =n 而不是留注释 —— 这些包在 feeds 里是存在的（前两个来自 kenzok8、
+#  emmc-health 来自 adminchenyu），留空等于交给 defconfig 决定，有被拉回来的风险
+#  （磁盘那批 DEFAULT_PACKAGES 的包就是这么踩的，见 README）。
+#  quickstart：首页状态汇总 + 快捷入口。M2 是 128MB NAND，不值得为它多装一套前端资源。
+CONFIG_PACKAGE_quickstart=n
+CONFIG_PACKAGE_luci-app-quickstart=n
+CONFIG_PACKAGE_luci-i18n-quickstart-zh-cn=n
+#  adguardhome：DNS 级去广告。core 本身 30–40MB、常驻内存 50–150MB，M2 的 512M 内存要跟
+#    nikki 抢，128M NAND 也放不下；而且 nikki 自带 DNS，功能上是重叠的。
+CONFIG_PACKAGE_adguardhome=n
+CONFIG_PACKAGE_luci-app-adguardhome=n
+CONFIG_PACKAGE_luci-i18n-adguardhome-zh-cn=n
+#  emmc-health：读 eMMC 的 EXT_CSD 出寿命估算。**M2 是 NAND、机器上根本没有 eMMC**，
+#    装上了页面打开也是空的。ZqinKing 给 zn_m2 的配置里同样没有这一项。
+CONFIG_PACKAGE_luci-app-emmc-health=n
 
 #---- Docker：512MB + NAND 跑不动，必关 ----
 CONFIG_PACKAGE_docker=n
