@@ -13,20 +13,28 @@ on:
     inputs:
       SOURCE:
         description: '选择源码线：一次运行只出这一条线的固件，要几条就手动跑几次。'
-        default: 'OWrt-PPE'
+        default: 'OWrt-NSS'
         required: true
         type: choice
         options:
           #OWrt-NSS = VIKINGYFY/immortalwrt @ main       —— 内核 6.18，带 WiFi + 无 WiFi，NSS 加速
-          #OWrt-PPE = VIKINGYFY/immortalwrt @ owrt      —— 内核 6.18，【不支持 WiFi】，PPE 加速
+          #OWrt-PPE = VIKINGYFY/immortalwrt @ owrt      —— 内核 6.18，【不支持 WiFi】，PPE 加速（新数据面）
           #LibWrt   = LiBwrt/LibWrt        @ 25.12-nss  —— 内核 6.12，NSS 加速 + WiFi 卸载
           #仓库 / 分支 / 主机名 / IP 全由这一个选项带出，没有第二处要填。
           #▲为什么分支不单独给输入框：GitHub 表单【不支持联动】，选了源码不会自动带出
           #  对应分支；而空输入框会被浏览器 autofill 成旧值 main —— 结果就是
           #  「选了 PPE 线却拉到 main 分支」。合并成一个下拉后这个坑不存在了。
-          #▲本条是无 WiFi 配置，默认走 owrt（PPE）；想在这台机器上要 NSS 就选 OWrt-NSS。
-          - OWrt-PPE
+          #★2026-10-13 事故驱动修改：默认值 OWrt-PPE → OWrt-NSS，勿改回。
+          #  背景：亚瑟与 M2 各刷过一次「默认构建」的固件，症状一致 —— 开机一段时间后
+          #  所有网口灯灭、设备不可达，软重启不恢复，彻底重刷才恢复。两台设备当时跑的是
+          #  不同源码线（一条 LibWrt、一条 owrt），共同点只剩「都用了本仓库的默认配置」。
+          #  owrt 分支 = 全新 PPE/EDMA 数据面，2026-10 上旬仍在密集修补（"disable EEE to
+          #  prevent idle-port egress wedge"、UNIPHY0 SGMII 模式修复等），尚在观察期；
+          #  其 idle-port 挂死类缺陷与「软复位不清交换机芯片状态、重刷/断电才恢复」吻合。
+          #  breeze303 / laipeng668 / ZqinKing（含 zn_m2 配置）全部走 main/NSS 成熟面，
+          #  故默认对齐 NSS；要追新数据面请显式选 OWrt-PPE，并自行承担不稳定性。
           - OWrt-NSS
+          - OWrt-PPE
           - LibWrt
       PACKAGE:
         description: '手动调整插件包，多个请用\n符号隔开。'
@@ -49,7 +57,7 @@ jobs:
     #调用公用编译核心WRT-CORE.yml
     uses: ./.github/workflows/WRT-CORE.yml
     with:
-      #编译配置（对应 Config/ZNM2-noWiFi.txt）
+      #编译配置（对应 Config/ZNM2-noWiFi.config）
       WRT_CONFIG: ZNM2-noWiFi
       #默认主题
       WRT_THEME: argon

@@ -93,8 +93,8 @@ jobs:
       - name: Initialization Values
         id: initialize-values
         run: |
-          WRT_TARGET=$(grep -m 1 -oP '^CONFIG_TARGET_\K[\w]+(?=\=y)' "./Config/$WRT_CONFIG.txt")
-          WRT_SUBTARGET=$(grep -m 1 -oP "^CONFIG_TARGET_${WRT_TARGET}_\K[\w]+(?=\=y)" "./Config/$WRT_CONFIG.txt")
+          WRT_TARGET=$(grep -m 1 -oP '^CONFIG_TARGET_\K[\w]+(?=\=y)' "./Config/$WRT_CONFIG.config")
+          WRT_SUBTARGET=$(grep -m 1 -oP "^CONFIG_TARGET_${WRT_TARGET}_\K[\w]+(?=\=y)" "./Config/$WRT_CONFIG.config")
           WRT_CACHE_SOURCE=${WRT_SOURCE//\//-}
           WRT_CACHE_BRANCH=${WRT_BRANCH//\//-}
           WRT_CACHE_TARGET="$WRT_TARGET-$WRT_SUBTARGET"
@@ -134,7 +134,10 @@ jobs:
 
       - name: Check Scripts
         run: |
-          find ./ -maxdepth 3 -type f -iregex ".*\(txt\|sh\)$" -exec dos2unix {} \; -exec chmod +x {} \;
+          #config/sh 都要过一遍 dos2unix：配置与脚本都可能被 Windows 编辑器存成 CRLF，
+          #带着 \r 进 .config 会让 CONFIG_PACKAGE_xxx=y\r 匹配不上任何包（静默失效）。
+          #txt 一并留着兜底（仓库里已无 .txt，防将来有人加回来又踩 CRLF）。
+          find ./ -maxdepth 3 -type f -iregex ".*\(config\|sh\|txt\)$" -exec dos2unix {} \; -exec chmod +x {} \;
 
       - name: Restore Build Cache
         id: cache-restore
@@ -205,9 +208,9 @@ jobs:
           cd ./wrt/
 
           if [[ "${WRT_CONFIG,,}" == *"test"* ]]; then
-            cat $GITHUB_WORKSPACE/Config/$WRT_CONFIG.txt >> .config
+            cat $GITHUB_WORKSPACE/Config/$WRT_CONFIG.config >> .config
           else
-            cat $GITHUB_WORKSPACE/Config/$WRT_CONFIG.txt $GITHUB_WORKSPACE/Config/GENERAL.txt >> .config
+            cat $GITHUB_WORKSPACE/Config/$WRT_CONFIG.config $GITHUB_WORKSPACE/Config/GENERAL.config >> .config
           fi
 
           $GITHUB_WORKSPACE/Scripts/Settings.sh
@@ -263,7 +266,7 @@ jobs:
         run: |
           cd ./wrt/ && mkdir ./upload/
 
-          cp -f ./.config ./upload/Config-"$WRT_CONFIG"-"$WRT_INFO"-"$WRT_BRANCH"-"$WRT_DATE".txt
+          cp -f ./.config ./upload/Config-"$WRT_CONFIG"-"$WRT_INFO"-"$WRT_BRANCH"-"$WRT_DATE".config
 
           #第三方插件源码溯源表（Packages.sh 生成：仓库 / 分支 / commit）
           if [ -f "$GITHUB_WORKSPACE/third-party-sources.txt" ]; then
