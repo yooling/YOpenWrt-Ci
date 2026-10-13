@@ -61,14 +61,18 @@ jobs:
       WRT_CONFIG: ZNM2-noWiFi
       #默认主题
       WRT_THEME: argon
-      #默认主机名：OWrt-NSS / OWrt-PPE 都归到 OWrt，LibWrt 归 LibWrt
-      WRT_NAME: ${{inputs.SOURCE == 'LibWrt' && 'LibWrt' || 'OWrt'}}
+      #默认主机名：OWrt-NSS / OWrt-PPE 都归到 OWrt，LibWrt 归 LibWrt；★带 -M2 后缀
+      #  与亚瑟那份区分 —— 两台主机名都叫 OWrt 时，同网里 mDNS / NetBIOS 会互相抢名字。
+      WRT_NAME: ${{inputs.SOURCE == 'LibWrt' && 'LibWrt-M2' || 'OWrt-M2'}}
       #默认WIFI名称（无 WiFi 版用不到，WRT-CORE 里该字段必填所以照样传）
       WRT_SSID: ${{inputs.SOURCE == 'LibWrt' && 'LibWrt' || 'OWrt'}}
       #默认WIFI密码
       WRT_WORD: 12345678
-      #默认地址：OWrt 线 10.x、LibWrt 线 20.x，两条线的固件在同一网络里不会撞 IP
-      WRT_IP: ${{inputs.SOURCE == 'LibWrt' && '192.168.20.1' || '192.168.10.1'}}
+      #默认地址：★M2 走 11.x / 21.x，亚瑟那两条工作流是 10.x / 20.x。
+      #  原先两台都是 10.x / 20.x，同网并存会直接撞 IP —— 这是当初把一条矩阵拆成
+      #  两条独立工作流的主要收益点，但拆完之后 IP 并没跟着分开，现在补上。
+      #  （同一条源码线内部仍按 OWrt / LibWrt 分成 11 和 21，避免两条线的固件互相打架。）
+      WRT_IP: ${{inputs.SOURCE == 'LibWrt' && '192.168.21.1' || '192.168.11.1'}}
       #默认密码，仅作提示，修改无用
       WRT_PW: 无
       #源码链接
