@@ -23,11 +23,11 @@ set +e
 
 PKGINFO="tmp/.packageinfo"
 CONFIG=".config"
-#忽略清单：Config/DepCheck-ignore.txt，每行一个「认了无害」的依赖名，命中就不报警。
+#忽略清单：Config/DepCheck-ignore.config，每行一个「认了无害」的依赖名，命中就不报警。
 #用途与准入标准见那个文件头部的说明 —— 只收「名字对不上但编译验证过不会中断」的，
 #mwan3 那种会在 package/install 炸的不许放进来。
 #CI 里本脚本是在 ./wrt（源码根）下跑的，仓库根在 $GITHUB_WORKSPACE；本地调试时退回上一级。
-IGNORE_FILE="${GITHUB_WORKSPACE:-..}/Config/DepCheck-ignore.txt"
+IGNORE_FILE="${GITHUB_WORKSPACE:-..}/Config/DepCheck-ignore.config"
 [ -f "$IGNORE_FILE" ] || IGNORE_FILE=""
 
 if [ ! -f "$CONFIG" ]; then
@@ -231,13 +231,13 @@ else
 	#按包名归拢输出，方便照着改 Config
 	awk -F'\t' '{ a[$1] = a[$1] " " $2 } END { for (p in a) printf "  %-32s ->%s\n", p, a[p] }' "$WORK/missing" | sort
 	echo "--------------------------------------------------------------"
-	echo "处理：在 Config/*.txt 里把这些包设成 =n，或换成源里确实存在的替代包。"
+	echo "处理：在 Config/*.config 里把这些包设成 =n，或换成源里确实存在的替代包。"
 	head -50 "$WORK/missing" | while IFS=$'\t' read -r p d; do
 		echo "::error::DepCheck: $p 依赖的 $d 在源码树中不存在，将在 package/install 阶段中断编译"
 	done
 fi
 if [ "$IGNORED" -gt 0 ]; then
-	echo "另有 $IGNORED 条命中忽略清单（Config/DepCheck-ignore.txt），已跳过不报警"
+	echo "另有 $IGNORED 条命中忽略清单（Config/DepCheck-ignore.config），已跳过不报警"
 fi
 echo "==============================================================="
 
@@ -261,7 +261,7 @@ if [ -n "$GITHUB_STEP_SUMMARY" ]; then
 		fi
 		if [ "$IGNORED" -gt 0 ]; then
 			echo ""
-			echo "- 另有 **$IGNORED** 条命中忽略清单（`Config/DepCheck-ignore.txt`），已跳过不报警"
+			echo "- 另有 **$IGNORED** 条命中忽略清单（`Config/DepCheck-ignore.config`），已跳过不报警"
 		fi
 	} >> "$GITHUB_STEP_SUMMARY"
 fi

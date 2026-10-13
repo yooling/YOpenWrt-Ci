@@ -3,7 +3,7 @@
 # Copyright (C) 2026 VIKINGYFY
 #
 # 移植自 laipeng668/openwrt-ci-roc 的 Roc-script.sh：
-#   1) 按需拉包：先读 Config/$WRT_CONFIG.txt + Config/GENERAL.txt，配置里没选中的包整段跳过
+#   1) 按需拉包：先读 Config/$WRT_CONFIG.config + Config/GENERAL.config，配置里没选中的包整段跳过
 #   2) 克隆重试：单个仓库网络抖动最多重试 3 次，不再一次失败就整构建崩掉
 #   3) 源码溯源：把每个第三方仓库的 repo/branch/commit 记进 third-party-sources.txt
 
@@ -24,34 +24,34 @@ mkdir -p "$(dirname "$THIRD_PARTY_SOURCES_FILE")"
 printf 'Repository\tBranch\tCommit\n' > "$THIRD_PARTY_SOURCES_FILE"
 
 #待解析的配置文件：机型配置 + 通用配置（此时 .config 尚未生成，直接读源文件）
-#自包含清单架构：Config/<配置>.txt 已经是完整清单，GENERAL.txt 是共用基座。
-#★顺序是「机型配置 → GENERAL.txt」，GENERAL 在后 → 同一 key 由 GENERAL 说了算。
+#自包含清单架构：Config/<配置>.config 已经是完整清单，GENERAL.config 是共用基座。
+#★顺序是「机型配置 → GENERAL.config」，GENERAL 在后 → 同一 key 由 GENERAL 说了算。
 #  所以机型层写的 =n 压不住 GENERAL 里的 =y，反过来 GENERAL 的 =y 会盖掉机型的 =n。
-#  （此前的注释写反了，害得 ZNM2 的五个 =n 以为生效实则没生效；已连同 GENERAL.txt 一起
-#   改掉解决 —— 详见 GENERAL.txt 的「为什么这里越来越短」一节。）
+#  （此前的注释写反了，害得 ZNM2 的五个 =n 以为生效实则没生效；已连同 GENERAL.config 一起
+#   改掉解决 —— 详见 GENERAL.config 的「为什么这里越来越短」一节。）
 #本文件的扫描结果只用于决定「要不要 clone 某个第三方包源」，真正生成 .config 的合并在
 #WRT-CORE.yml 的 Custom Settings 步骤，那里的 cat 顺序同样是机型在前、GENERAL 在后。
-#（早期还有一层 Config/*-Override.txt 按设备关键词自动追加，现已取消 ——
+#（早期还有一层 Config/*-Override.config 按设备关键词自动追加，现已取消 ——
 # 亚瑟要出 WiFi 与 noWiFi 两份，Override 只认设备名分辨不了形态，见 Settings.sh 注释。）
 WRT_CONFIG_FILES=()
-if [ -n "${WRT_CONFIG:-}" ] && [ -f "$WORKSPACE/Config/$WRT_CONFIG.txt" ]; then
-	WRT_CONFIG_FILES+=("$WORKSPACE/Config/$WRT_CONFIG.txt")
+if [ -n "${WRT_CONFIG:-}" ] && [ -f "$WORKSPACE/Config/$WRT_CONFIG.config" ]; then
+	WRT_CONFIG_FILES+=("$WORKSPACE/Config/$WRT_CONFIG.config")
 fi
-if [ -f "$WORKSPACE/Config/GENERAL.txt" ]; then
-	WRT_CONFIG_FILES+=("$WORKSPACE/Config/GENERAL.txt")
+if [ -f "$WORKSPACE/Config/GENERAL.config" ]; then
+	WRT_CONFIG_FILES+=("$WORKSPACE/Config/GENERAL.config")
 fi
 #★最终裁决层（PRIVATE）也必须扫进来，否则会出「包选了却拉不到」的怪事：
 #  在 PRIVATE 里写了 CONFIG_PACKAGE_xxx=y 想装某个第三方插件，而本脚本没扫这个文件，
 #  就判定「配置里没选中」而跳过 clone —— 后面 defconfig 时这个包根本不存在，
 #  轻则静默装不上，重则在 package/install 阶段报 unable to select packages 中断编译。
 #下面的顺序必须与 Settings.sh / WRT-CORE.yml 里 .config 的合并顺序一致
-#（越靠后优先级越高）：机型 → GENERAL → PRIVATE.txt（通用）→ PRIVATE-<配置>.txt（特定）。
-#PRIVATE-<配置>.txt 排最后，是为了让「针对某一台的定夺」能压过「对所有台的统一设定」。
-if [ -f "$WORKSPACE/Config/PRIVATE.txt" ]; then
-	WRT_CONFIG_FILES+=("$WORKSPACE/Config/PRIVATE.txt")
+#（越靠后优先级越高）：机型 → GENERAL → PRIVATE.config（通用）→ PRIVATE-<配置>.config（特定）。
+#PRIVATE-<配置>.config 排最后，是为了让「针对某一台的定夺」能压过「对所有台的统一设定」。
+if [ -f "$WORKSPACE/Config/PRIVATE.config" ]; then
+	WRT_CONFIG_FILES+=("$WORKSPACE/Config/PRIVATE.config")
 fi
-if [ -n "${WRT_CONFIG:-}" ] && [ -f "$WORKSPACE/Config/PRIVATE-$WRT_CONFIG.txt" ]; then
-	WRT_CONFIG_FILES+=("$WORKSPACE/Config/PRIVATE-$WRT_CONFIG.txt")
+if [ -n "${WRT_CONFIG:-}" ] && [ -f "$WORKSPACE/Config/PRIVATE-$WRT_CONFIG.config" ]; then
+	WRT_CONFIG_FILES+=("$WORKSPACE/Config/PRIVATE-$WRT_CONFIG.config")
 fi
 
 #一次性扫描全部配置文件，建立「已启用包名」索引
@@ -200,8 +200,46 @@ UPDATE_PACKAGE_OPT() {
 	if package_enabled "$PKG_NAME" "luci-$PKG_NAME" "luci-app-$PKG_NAME" "luci-theme-$PKG_NAME" "luci-i18n-$PKG_NAME-zh-cn"; then
 		UPDATE_PACKAGE "$PKG_NAME" "$@"
 	else
-		echo "skip $PKG_NAME: not selected in Config/$WRT_CONFIG.txt or Config/GENERAL.txt"
+		echo "skip $PKG_NAME: not selected in Config/$WRT_CONFIG.config or Config/GENERAL.config"
 	fi
+}
+
+#稀疏克隆：从「大杂烩」仓库里只取一个子目录，不把整个仓库拉下来。
+#典型用途是 x-wrt/com.x-wrt —— 它有 500+ 个包、5000+ 次提交，全量 --depth=1 也要几百 MB
+#且拖慢整个 Custom Packages 步骤；用 --sparse + sparse-checkout 只取 luci-app-wizard
+#一个目录，几秒钟完成。
+#参数：$1 包名（落到本地的目录名） $2 仓库 $3 分支 $4 仓库内子目录（默认与包名同名）
+UPDATE_PACKAGE_SPARSE() {
+	local PKG_NAME=$1
+	local PKG_REPO=$2
+	local PKG_BRANCH=$3
+	local PKG_SUBDIR=${4:-$PKG_NAME}
+	local REPO_NAME=${PKG_REPO#*/}
+	local TMP_DIR="${REPO_NAME}-sparse"
+
+	#先清掉 feeds 与本地可能存在的同名旧包，避免重复定义（与 UPDATE_PACKAGE 的做法一致）
+	local FOUND_DIRS
+	FOUND_DIRS=$(find ../feeds/luci/ ../feeds/packages/ ../feeds/smpackage/ -maxdepth 3 -type d -iname "*$PKG_NAME*" 2>/dev/null)
+	if [ -n "$FOUND_DIRS" ]; then
+		while read -r DIR; do
+			rm -rf "$DIR"
+			echo "Delete directory: $DIR"
+		done <<< "$FOUND_DIRS"
+	fi
+	rm -rf "./$PKG_NAME" "$TMP_DIR"
+
+	clone_with_retry "$TMP_DIR" --depth=1 --no-tags --single-branch \
+		--filter=blob:none --sparse --branch "$PKG_BRANCH" "https://github.com/$PKG_REPO.git"
+	record_git_revision "$PKG_REPO" "$PKG_BRANCH" "$TMP_DIR"
+
+	git -C "$TMP_DIR" sparse-checkout set "$PKG_SUBDIR" 2>/dev/null
+	if [ -d "$TMP_DIR/$PKG_SUBDIR" ]; then
+		mv -f "$TMP_DIR/$PKG_SUBDIR" "./$PKG_NAME"
+		echo "sparse-cloned $PKG_SUBDIR -> package/$PKG_NAME"
+	else
+		echo "::warning::$PKG_REPO 里没找到子目录 $PKG_SUBDIR，$PKG_NAME 未安装"
+	fi
+	rm -rf "$TMP_DIR"
 }
 
 # 调用示例
@@ -228,7 +266,7 @@ UPDATE_PACKAGE_OPT "passwall2" "Openwrt-Passwall/openwrt-passwall2" "main" "pkg"
 #▲kenzok8/small-package 其实早就作为 smpackage feed 注入了（WRT-CORE.yml 的 Update Feeds），
 #  但走 feed 有个坑：feeds install -a 时 packages/luci 排在 smpackage 前面先占住包名，
 #  而官方版又被 WRT-CORE.yml 的「删官方同名包」那步 rm 掉了 —— 两边都装不上，
-#  包从源码树里彻底消失（JDCloud-WiFi.txt 第九节记的那 119 个包就是这么没的，
+#  包从源码树里彻底消失（JDCloud-WiFi.config 第九节记的那 119 个包就是这么没的，
 #  adguardhome 正在名单里）。
 #  所以这里不走 feeds，直接用 UPDATE_PACKAGE 把包落到 wrt/package/ 下：这个目录优先级高于
 #  feeds，且 Custom Packages 步骤排在 feeds install 之后，不会再被那轮清理删掉。
@@ -236,7 +274,41 @@ UPDATE_PACKAGE_OPT "passwall2" "Openwrt-Passwall/openwrt-passwall2" "main" "pkg"
 #  "quickstart"  → quickstart + luci-app-quickstart
 #  "adguardhome" → adguardhome + luci-app-adguardhome
 UPDATE_PACKAGE_OPT "quickstart" "kenzok8/small-package" "main" "pkg"
+#quickstart 首页依赖精简（照抄 ZqinKing 的 fix_quickstart()）：
+#  上游 quickstart 的 Makefile 在 DEPENDS 里挂了 smartmontools / smartmontools-drivedb /
+#  mdadm / parted / e2fsprogs —— 这些是"硬盘健康与阵列"相关的重家伙，一个状态首页
+#  根本用不到，却会被 defconfig 一起拉进固件。ZqinKing 的做法是把它们从 DEPENDS 摘掉。
+#  ★只删依赖、不新增，所以不会引入"缺依赖"风险（apk 下缺依赖才是致命错误）。
+if [ -f ./quickstart/Makefile ]; then
+	sed -i \
+		-e '/^[[:space:]]*DEPENDS:=/,/^[[:space:]]*URL:=/ s/[[:space:]]*+smartmontools-drivedb//g' \
+		-e '/^[[:space:]]*DEPENDS:=/,/^[[:space:]]*URL:=/ s/[[:space:]]*+smartmontools//g' \
+		-e '/^[[:space:]]*DEPENDS:=/,/^[[:space:]]*URL:=/ s/[[:space:]]*+mdadm//g' \
+		-e '/^[[:space:]]*DEPENDS:=/,/^[[:space:]]*URL:=/ s/[[:space:]]*+parted//g' \
+		-e '/^[[:space:]]*DEPENDS:=/,/^[[:space:]]*URL:=/ s/[[:space:]]*+e2fsprogs//g' \
+		./quickstart/Makefile
+	echo "已移除 quickstart 的非必要存储依赖（smartmontools/mdadm/parted/e2fsprogs）"
+fi
 UPDATE_PACKAGE_OPT "adguardhome" "kenzok8/small-package" "main" "pkg"
+#======================= network_guide：首启网络设置向导 =======================
+#★要的效果是 ZqinKing 那种多页向导：/cgi-bin/luci/admin/network_guide/pages/network
+#  —— 它不是一个单一入口，而是 pages/network → pages/wan → pages/lan 一串分页流程。
+#  这个东西就是 **luci-app-wizard**（X-WRT 血统，作者 ptpt52 = X-WRT 创始人 Chen Minqiang），
+#  admin/network_guide 是它 controller 里注册的路由，pages/* 是 htdocs 下的向导分页。
+#★2026-10-13 改源：原先从 kenzok8/small-package 以 pkg 模式抽，抽出来的目录要看它同步
+#  得全不全，不够稳。这里改成**直接从上游 x-wrt/com.x-wrt 稀疏克隆**，拿到的就是
+#  官方完整版（含 htdocs/luci-static/resources/view/wizard 下的整组分页），
+#  与 ZqinKing 那台机器上看到的效果对得上。
+#  用稀疏克隆是因为 com.x-wrt 是 500+ 包的大仓库，全量拉太重。
+#进度记在 /etc/config/wizard（包内 conffiles），配完不再自动跳出。
+#与 netwizard（sirpdboy，本文件下方）的分工：netwizard 是「平时进菜单手动切拨号/旁路由/
+#  静态 IP」；wizard 是「第一次开机自动引导」。一个偏首次上手、一个偏日常切换，互补不冲突。
+#LUCI_DEPENDS 为空（2026-10-13 查证 Makefile），无额外依赖，apk 下不会因缺依赖中断编译。
+if package_enabled "luci-app-wizard" "luci-i18n-wizard-zh-cn"; then
+	UPDATE_PACKAGE_SPARSE "luci-app-wizard" "x-wrt/com.x-wrt" "master"
+else
+	echo "skip luci-app-wizard: not selected in Config/$WRT_CONFIG.config or Config/GENERAL.config"
+fi
 #eMMC 健康监测：单包仓库，仓库根目录就是 Makefile，用 name 模式把目录重命名为包名。
 UPDATE_PACKAGE_OPT "luci-app-emmc-health" "adminchenyu/eMMC-Health" "main" "name"
 #  坑：它的 Makefile 声明了 +luci-js-deps 依赖，但 luci-js-deps 在当前源码树里不存在
@@ -256,7 +328,28 @@ UPDATE_PACKAGE_OPT "luci-app-dockerman" "lisaac/luci-app-dockerman" "master"
 
 UPDATE_PACKAGE_OPT "luci-app-tailscale" "asvow/luci-app-tailscale" "main"
 
-#UPDATE_PACKAGE_OPT "athena-led" "unraveloop/JDC-AX6600-Athena-LED-Controller" "main"
+#======================= 京东云 LED 控制（★灭灯 BUG 的修复项，勿再注释掉）=======================
+#背景：亚瑟（京东云雅典娜 / RE-SS-01 / AX1800 Pro）的指示灯不是普通 GPIO LED，
+#  需要 athena_led 这个常驻服务定时下发状态，否则灯没有一个"主人"，
+#  表现就是「开机时亮着 → 跑一阵子熄灭 → 重启也不亮」，肉眼看像机器坏了。
+#  ★本机这两台设备都出现过，刷别的作者的固件就没这现象 —— 查下来三位参考作者
+#    （breeze303 / laipeng668 / ZqinKing）**全都装了这个插件**，只有我们把它注释掉了：
+#      breeze303  libwrt.sh:      rm -rf package/emortal/luci-app-athena-led && clone NONGFAH 版
+#      laipeng668 Roc-script.sh:  clone_repository NONGFAH/luci-app-athena-led
+#      ZqinKing   jdcloud 配置:   luci-app-athena-led=m + re-cs-02 设备包里也带
+#  原先注释掉的那行用的是 unraveloop 的旧仓库，现统一改成三家都在用的 NONGFAH 版。
+UPDATE_PACKAGE_OPT "athena-led" "NONGFAH/luci-app-athena-led" "main"
+#拉下来之后还要补两件上游没做的事：
+#  1) 删掉 immortalwrt 自带的 package/emortal/luci-app-athena-led —— 它是旧版，
+#     留着会和 NONGFAH 版重复定义（breeze303 的 libwrt.sh 第 1 行就是干这个）。
+#  2) chmod +x：上游仓库里 init.d / usr/sbin 下的脚本没有可执行位，不补的话装进固件后
+#     athena_led 服务根本起不来，LED 依旧没人维护，等于白装。三家作者都做了这一步。
+if [ -d ./luci-app-athena-led ]; then
+	rm -rf ./emortal/luci-app-athena-led 2>/dev/null
+	chmod +x ./luci-app-athena-led/root/etc/init.d/athena_led \
+		./luci-app-athena-led/root/usr/sbin/athena-led 2>/dev/null
+	echo "luci-app-athena-led installed (JDCloud Athena LED controller)"
+fi
 UPDATE_PACKAGE_OPT "ddns-go" "sirpdboy/luci-app-ddns-go" "main"
 UPDATE_PACKAGE_OPT "diskman" "sbwml/luci-app-diskman" "main"
 UPDATE_PACKAGE_OPT "mini-diskmanager" "4IceG/luci-app-mini-diskmanager" "main"
@@ -271,7 +364,7 @@ UPDATE_PACKAGE_OPT "qmodem" "FUjr/QModem" "main"
 UPDATE_PACKAGE_OPT "quickfile" "sbwml/luci-app-quickfile" "main"
 UPDATE_PACKAGE_OPT "timecontrol" "sirpdboy/luci-app-timecontrol" "main"
 #viking 不参与按需判断：它同时提供 homeproxy / gecoosac / wolultra / sing-box，
-#这些包在 GENERAL.txt 里以各自的名字出现，按 "viking" 匹配不到，必须无条件拉取。
+#这些包在 GENERAL.config 里以各自的名字出现，按 "viking" 匹配不到，必须无条件拉取。
 UPDATE_PACKAGE "viking" "VIKINGYFY/packages" "main" "" "axonhub gecoosac sing-box luci-app-homeproxy luci-app-timewol luci-app-wolplus luci-app-wolultra"
 UPDATE_PACKAGE_OPT "vnt" "lmq8267/luci-app-vnt" "main"
 

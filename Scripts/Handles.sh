@@ -269,7 +269,7 @@ fi
 #效果：USB 口插入随身WiFi 自动建 WAN 并加入防火墙 wan 区；拔出只 ifdown、保留配置
 #⚠ 暂时停用（先把基础固件跑通）。脚本本身保留在 Scripts/USB-WAN.sh，恢复步骤：
 #   1) 把下面 6 行行首的 # 去掉；
-#   2) 按 USB-WAN.md 把 USB 内核模块加回 Config/GENERAL.txt（kmod-usb-xhci、
+#   2) 按 USB-WAN.md 把 USB 内核模块加回 Config/GENERAL.config（kmod-usb-xhci、
 #      kmod-usb-net-qmi-wwan 及 fibocom/quectel 变体、usb-modeswitch-data）。
 #USBWAN_SH="${GITHUB_WORKSPACE:-$(cd "$(dirname "$0")" && pwd)}/Scripts/USB-WAN.sh"
 #if [ -f "$USBWAN_SH" ]; then
