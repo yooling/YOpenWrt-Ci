@@ -273,6 +273,11 @@ UPDATE_PACKAGE_OPT "passwall2" "Openwrt-Passwall/openwrt-passwall2" "main" "pkg"
 #★pkg 模式的 find 用 -iname "*名字*"，一次调用会把同名前缀的包一起抽出来：
 #  "quickstart"  → quickstart + luci-app-quickstart
 #  "adguardhome" → adguardhome + luci-app-adguardhome
+#★这一个包同时提供两样东西（2026-10-13 查源码确认）：
+#  /admin/quickstart      → 首页（template quickstart/home）
+#  /admin/network_guide   → 多页网络向导（pages/network → pages/wan → ...）
+#  两者在同一个 controller 的 index() 里、被同一个 `if pgrep quickstart` 守卫，
+#  所以「要向导」就必然「带首页」，无法只取其一（用户已确认接受）。
 UPDATE_PACKAGE_OPT "quickstart" "kenzok8/small-package" "main" "pkg"
 #quickstart 首页依赖精简（照抄 ZqinKing 的 fix_quickstart()）：
 #  上游 quickstart 的 Makefile 在 DEPENDS 里挂了 smartmontools / smartmontools-drivedb /
@@ -290,24 +295,33 @@ if [ -f ./quickstart/Makefile ]; then
 	echo "已移除 quickstart 的非必要存储依赖（smartmontools/mdadm/parted/e2fsprogs）"
 fi
 UPDATE_PACKAGE_OPT "adguardhome" "kenzok8/small-package" "main" "pkg"
-#======================= network_guide：首启网络设置向导 =======================
-#★要的效果是 ZqinKing 那种多页向导：/cgi-bin/luci/admin/network_guide/pages/network
-#  —— 它不是一个单一入口，而是 pages/network → pages/wan → pages/lan 一串分页流程。
-#  这个东西就是 **luci-app-wizard**（X-WRT 血统，作者 ptpt52 = X-WRT 创始人 Chen Minqiang），
-#  admin/network_guide 是它 controller 里注册的路由，pages/* 是 htdocs 下的向导分页。
-#★2026-10-13 改源：原先从 kenzok8/small-package 以 pkg 模式抽，抽出来的目录要看它同步
-#  得全不全，不够稳。这里改成**直接从上游 x-wrt/com.x-wrt 稀疏克隆**，拿到的就是
-#  官方完整版（含 htdocs/luci-static/resources/view/wizard 下的整组分页），
-#  与 ZqinKing 那台机器上看到的效果对得上。
-#  用稀疏克隆是因为 com.x-wrt 是 500+ 包的大仓库，全量拉太重。
-#进度记在 /etc/config/wizard（包内 conffiles），配完不再自动跳出。
-#与 netwizard（sirpdboy，本文件下方）的分工：netwizard 是「平时进菜单手动切拨号/旁路由/
-#  静态 IP」；wizard 是「第一次开机自动引导」。一个偏首次上手、一个偏日常切换，互补不冲突。
-#LUCI_DEPENDS 为空（2026-10-13 查证 Makefile），无额外依赖，apk 下不会因缺依赖中断编译。
+#======================= network_guide：多页网络设置向导 =======================
+#★2026-10-13 二次更正：此前这里拉的是 luci-app-wizard（x-wrt），**判断错了**。
+#  network_guide 的真实归属已通过源码定位 —— 它由 **luci-app-quickstart** 注册，
+#  也就是上面第 276 行已经拉好的那个包：
+#      luci-app-quickstart/luasrc/controller/quickstart.lua
+#        entry({"admin","quickstart"},            template("quickstart/home"), _("QuickStart"), 1)
+#        entry({"admin","network_guide"},         call("networkguide_index"), _("NetworkGuide"), 2)
+#        entry({"admin","network_guide","pages"}, call("quickstart_index", {...})).leaf = true
+#  三条 entry 同处一个 index()、被同一个 `if pgrep quickstart` 守卫 → 首页与向导同包同生共死。
+#  排除 luci-app-wizard 的三条硬证据：
+#    (1) wizard 的 menu.d 只注册 admin/initsetup，整个包只有 1 个 view 文件
+#        （view/wizard/wizard.js），**没有 pages/ 子目录**，做不出 /network_guide/pages/* 多页；
+#    (2) 六家参考仓库（ZqinKing / laipeng668 / breeze303 / darkrain88 / krisxu23 /
+#        VIKINGYFY）全仓 grep network_guide **全部零命中**；
+#    (3) wizard 的 initsetup 实测打不开，报 `uci/get 未找到资源` —— 因为
+#        depends.uci 要求 /etc/config/wizard 存在而它没被正确生成。
+#★因此这里**不再拉 wizard**（保留整段改为条件化，只在未来显式需要单页向导时启用），
+#  network_guide 功能完全由第 276 行的 quickstart 那条覆盖。
+#  历史包袱：wizard 的零成本可选性保留 —— 一旦有人在配置里写回 luci-app-wizard=y，
+#  本块仍能把它从 x-wrt 官方源稀疏克隆下来，不至于没有退路。
 if package_enabled "luci-app-wizard" "luci-i18n-wizard-zh-cn"; then
+	#▲警告：只有明确要「X-WRT 单页首启向导」时才应该走到这里。
+	#  若要的是多页 network_guide，请确认配置里有 luci-app-quickstart=y（见第 276 行），
+	#  而不是 luci-app-wizard=y —— 两者路由不同（initsetup vs network_guide），别混淆。
 	UPDATE_PACKAGE_SPARSE "luci-app-wizard" "x-wrt/com.x-wrt" "master"
 else
-	echo "skip luci-app-wizard: not selected in Config/$WRT_CONFIG.config or Config/GENERAL.config"
+	echo "skip luci-app-wizard: 未在 Config/$WRT_CONFIG.config 或 Config/GENERAL.config 中选中（正常：M2 的 network_guide 由 luci-app-quickstart 提供）"
 fi
 #eMMC 健康监测：单包仓库，仓库根目录就是 Makefile，用 name 模式把目录重命名为包名。
 UPDATE_PACKAGE_OPT "luci-app-emmc-health" "adminchenyu/eMMC-Health" "main" "name"

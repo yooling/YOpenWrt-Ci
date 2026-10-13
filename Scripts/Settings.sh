@@ -490,4 +490,80 @@ DCEOF
 		chmod 0755 "$BASE_ETC/init.d/dropcaches-cron"
 		echo "nss: injected dropcaches-cron (daily drop_caches)"
 	fi
+
+	#---- 5) nikki 透明代理断网自愈（2026-10-13 新增）----
+	#背景：用户实测「nikki 导入 yaml → 启动/保存后整机断网」，重刷才恢复。
+	#已排查结论（勿重复走弯路）：
+	#  · procd cgroup bug（openwrt/procd#31，nikki issue #767 同款症状）——
+	#    **两条源码线都已包含修复 `180ffccf`（behind_by=0），不是这个原因**。
+	#  · 本轮真正锁定的是 `kmod-nft-fullcone` 与 `fullconenat-sonic` 的 nftables
+	#    NAT 规则冲突（见 Config/ZNM2-noWiFi.config 同名段落），那才是断网主因。
+	#本脚本只做**兜底自愈**，不改变 nikki 的任何行为：
+	#  ① 开机后延迟检查 nikki 状态，若已启用但服务没跑起来 → 自动 restart 一次；
+	#  ② 检查 cgroup 是否正确落位（对应 procd 那个 bug 的症状），落错就重载，
+	#     这样即便以后换到一条**未含该修复**的旧源码线也不会再被它坑死；
+	#  ③ 全部动作写入 /var/log/nikki-guard.log，方便出问题时回溯。
+	#★刻意不做的事：不自动改 nikki 配置、不自动开关透明代理 —— 那些是用户的选择，
+	#  自动改会把"用户想关代理"和"代理挂了"两种情况混淆。
+	if [ -d "$BASE_ETC" ]; then
+		cat > "$BASE_ETC/init.d/nikki-guard" <<'NKEOF'
+#!/bin/sh /etc/rc.common
+#nikki 透明代理兜底自愈：只在"已启用但未正常运行"时动手，平时零打扰。
+START=99
+
+LOG="/var/log/nikki-guard.log"
+log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
+
+#nikki 的启用开关放在 /etc/config/nikki 的 global.enabled
+nikki_enabled() {
+	uci -q get nikki.config.enabled 2>/dev/null | grep -qx '1'
+}
+
+#检查进程是否落在自己的 cgroup 里（procd bug 的症状是掉到根 cgroup "0::/"）
+nikki_cgroup_ok() {
+	local pid
+	pid="$(cat /var/run/nikki/nikki.pid 2>/dev/null)" || return 1
+	[ -n "$pid" ] || return 1
+	[ -r "/proc/$pid/cgroup" ] || return 1
+	#掉到根 cgroup 时这一行是 "0::/"，正常应为 "0::/services/nikki/nikki"
+	grep -q '/services/nikki' "/proc/$pid/cgroup" 2>/dev/null
+}
+
+boot() {
+	#延迟等待：NSS 与网络栈初始化完再检查，避免开机瞬间的假失败
+	(
+		sleep 45
+		nikki_enabled || { log "nikki 未启用，跳过"; exit 0; }
+
+		#① 服务没在跑 → 拉起
+		if ! pgrep -x nikki >/dev/null 2>&1 && ! pidof mihomo >/dev/null 2>&1; then
+			log "检测到 nikki 已启用但进程不在，尝试 restart"
+			/etc/init.d/nikki restart >>"$LOG" 2>&1
+			sleep 15
+		fi
+
+		#② 服务在跑但 cgroup 落错 → 重载（对应 procd cgroup bug）
+		if nikki_enabled && ! nikki_cgroup_ok; then
+			log "检测到 nikki 进程 cgroup 落位异常，尝试 restart 修复"
+			/etc/init.d/nikki restart >>"$LOG" 2>&1
+			sleep 10
+			if nikki_cgroup_ok; then
+				log "cgroup 修复成功"
+			else
+				log "cgroup 仍异常 —— 若本源码线 procd 未含 180ffccf 修复，请升级上游"
+			fi
+		fi
+
+		#③ 最终状态记录，便于用户排查
+		if nikki_enabled; then
+			log "结束：pgrep=$(pgrep -x nikki | tr '\n' ' ') cgroup_ok=$(nikki_cgroup_ok && echo yes || echo no)"
+		fi
+	) &
+}
+
+start() { boot; }
+NKEOF
+		chmod 0755 "$BASE_ETC/init.d/nikki-guard"
+		echo "nikki: injected nikki-guard (cgroup self-heal + start watchdog)"
+	fi
 fi
