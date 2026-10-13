@@ -1,41 +1,32 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2026 VIKINGYFY
+# Modified by yoolingchiang
 
-#CI项目：兆能 ZN-M2 —— 无 WiFi 版（512MB RAM + 128MB NAND，本机型无无线）
-#CI源码：运行时用 SOURCE 下拉框选 OWrt（ImmortalWrt main / 6.18）或 LibWrt（25.12-nss / 6.12），一次只出一个固件
-#CI粒度：一条工作流 = 一份设备配置；源码线在运行时手动选，不做矩阵展开
+#CI项目：兆能 ZN-M2 —— 无 WiFi 版（512MB 内存 + 128MB NAND，本机无无线模块）
+#CI粒度：一条工作流 = 一台机器的一份配置；源码线在运行时手动选，不做矩阵展开
 name: ZNM2-noWiFi
 
 #CI计划
 on:
-  #仅手动编译（已关闭所有自动触发）
+  #仅手动编译（没有任何自动触发：schedule / push / pull_request 一律不加）
   workflow_dispatch:
     inputs:
       SOURCE:
         description: '选择源码线：一次运行只出这一条线的固件，要几条就手动跑几次。'
-        default: 'OWrt-NSS'
+        default: 'LibWrt'
         required: true
         type: choice
         options:
-          #OWrt-NSS = VIKINGYFY/immortalwrt @ main       —— 内核 6.18，带 WiFi + 无 WiFi，NSS 加速
-          #OWrt-PPE = VIKINGYFY/immortalwrt @ owrt      —— 内核 6.18，【不支持 WiFi】，PPE 加速（新数据面）
           #LibWrt   = LiBwrt/LibWrt        @ 25.12-nss  —— 内核 6.12，NSS 加速 + WiFi 卸载
-          #仓库 / 分支 / 主机名 / IP 全由这一个选项带出，没有第二处要填。
+          #OWrt-NSS = VIKINGYFY/immortalwrt @ main      —— 内核 6.18，NSS 加速
+          #OWrt-PPE = VIKINGYFY/immortalwrt @ owrt      —— 内核 6.18，PPE 加速（新 edma/ppe 架构）
+          #仓库 / 分支 / 主机名全由这一个选项带出，没有第二处要填。
           #▲为什么分支不单独给输入框：GitHub 表单【不支持联动】，选了源码不会自动带出
           #  对应分支；而空输入框会被浏览器 autofill 成旧值 main —— 结果就是
           #  「选了 PPE 线却拉到 main 分支」。合并成一个下拉后这个坑不存在了。
-          #★2026-10-13 事故驱动修改：默认值 OWrt-PPE → OWrt-NSS，勿改回。
-          #  背景：亚瑟与 M2 各刷过一次「默认构建」的固件，症状一致 —— 开机一段时间后
-          #  所有网口灯灭、设备不可达，软重启不恢复，彻底重刷才恢复。两台设备当时跑的是
-          #  不同源码线（一条 LibWrt、一条 owrt），共同点只剩「都用了本仓库的默认配置」。
-          #  owrt 分支 = 全新 PPE/EDMA 数据面，2026-10 上旬仍在密集修补（"disable EEE to
-          #  prevent idle-port egress wedge"、UNIPHY0 SGMII 模式修复等），尚在观察期；
-          #  其 idle-port 挂死类缺陷与「软复位不清交换机芯片状态、重刷/断电才恢复」吻合。
-          #  breeze303 / laipeng668 / ZqinKing（含 zn_m2 配置）全部走 main/NSS 成熟面，
-          #  故默认对齐 NSS；要追新数据面请显式选 OWrt-PPE，并自行承担不稳定性。
+          - LibWrt
           - OWrt-NSS
           - OWrt-PPE
-          - LibWrt
       PACKAGE:
         description: '手动调整插件包，多个请用\n符号隔开。'
         required: false
@@ -61,23 +52,19 @@ jobs:
       WRT_CONFIG: ZNM2-noWiFi
       #默认主题
       WRT_THEME: argon
-      #默认主机名：OWrt-NSS / OWrt-PPE 都归到 OWrt，LibWrt 归 LibWrt；★带 -M2 后缀
-      #  与亚瑟那份区分 —— 两台主机名都叫 OWrt 时，同网里 mDNS / NetBIOS 会互相抢名字。
-      WRT_NAME: ${{inputs.SOURCE == 'LibWrt' && 'LibWrt-M2' || 'OWrt-M2'}}
+      #默认主机名：OWrt 两条线都归到 OWrt，LibWrt 归 LibWrt
+      WRT_NAME: ${{inputs.SOURCE == 'LibWrt' && 'LibWrt' || 'OWrt'}}
       #默认WIFI名称（无 WiFi 版用不到，WRT-CORE 里该字段必填所以照样传）
       WRT_SSID: ${{inputs.SOURCE == 'LibWrt' && 'LibWrt' || 'OWrt'}}
       #默认WIFI密码
       WRT_WORD: 12345678
-      #默认地址：★M2 走 11.x / 21.x，亚瑟那两条工作流是 10.x / 20.x。
-      #  原先两台都是 10.x / 20.x，同网并存会直接撞 IP —— 这是当初把一条矩阵拆成
-      #  两条独立工作流的主要收益点，但拆完之后 IP 并没跟着分开，现在补上。
-      #  （同一条源码线内部仍按 OWrt / LibWrt 分成 11 和 21，避免两条线的固件互相打架。）
-      WRT_IP: ${{inputs.SOURCE == 'LibWrt' && '192.168.21.1' || '192.168.11.1'}}
+      #默认地址：两台机器统一 192.168.51.100（刷完直接这个地址进后台）
+      WRT_IP: 192.168.51.100
       #默认密码，仅作提示，修改无用
       WRT_PW: 无
       #源码链接
       WRT_REPO: ${{inputs.SOURCE == 'LibWrt' && 'https://github.com/LiBwrt/LibWrt.git' || 'https://github.com/VIKINGYFY/immortalwrt.git'}}
-      #源码分支：LibWrt→25.12-nss；OWrt-PPE→owrt（PPE、无 WiFi）；其余→main（NSS）
+      #源码分支：LibWrt→25.12-nss；OWrt-PPE→owrt（PPE）；其余→main（NSS）
       WRT_BRANCH: ${{inputs.SOURCE == 'LibWrt' && '25.12-nss' || (inputs.SOURCE == 'OWrt-PPE' && 'owrt' || 'main')}}
       #源码名称
       WRT_SOURCE: ${{inputs.SOURCE == 'LibWrt' && 'LiBwrt/LibWrt' || 'VIKINGYFY/immortalwrt'}}

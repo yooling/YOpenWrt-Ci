@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2026 VIKINGYFY
+# Modified by yoolingchiang
 
-#CI项目
+#CI项目：只出 .config、不编译固件 —— 改完配置先跑这个，几分钟就能看出
+#        哪些包被 defconfig 真正选中（默认 TEST=true）
+#CI计划：仅手动触发，没有任何自动运行
 name: WRT-TEST
 
 #CI计划
@@ -10,45 +13,38 @@ on:
   workflow_dispatch:
     inputs:
       CONFIG:
-        default: 'JDCloud-noWiFi'
+        default: 'ZNM2-noWiFi'
         required: true
         type: choice
         options:
-          #只留本仓库实际维护的配置，已删除的机型配置不再出现在下拉里
-          #JDCloud-WiFi 已于 2026-10-13 停用（用户决定只保留 noWiFi 固件）：
-          #  配置文件 Config/JDCloud-WiFi.config 留档未删，工作流 JDCloud-WiFi.yml
-          #  已移到 .trash-old/。恢复时把该 yml 拷回 .github/workflows/ 并取消下一行注释。
-          #- JDCloud-WiFi
+          #只留本仓库实际维护的配置
           - JDCloud-noWiFi
           - ZNM2-noWiFi
           - TEST
       SOURCE:
-        description: '选择源码线（与两条正式工作流同一套下拉框）'
-        default: 'OWrt-NSS'
+        description: '选择源码线（与两条正式工作流同一套下拉框、同一顺序）'
+        default: 'LibWrt'
         required: true
         type: choice
         options:
-          #OWrt-NSS = VIKINGYFY/immortalwrt @ main       —— 内核 6.18，带 WiFi + 无 WiFi，NSS 加速
-          #OWrt-PPE = VIKINGYFY/immortalwrt @ owrt      —— 内核 6.18，【不支持 WiFi】，PPE 加速
           #LibWrt   = LiBwrt/LibWrt        @ 25.12-nss  —— 内核 6.12，NSS 加速 + WiFi 卸载
-          #仓库 / 分支 / 主机名 / IP 全由这一个选项带出，没有第二处要填。
+          #OWrt-NSS = VIKINGYFY/immortalwrt @ main      —— 内核 6.18，NSS 加速
+          #OWrt-PPE = VIKINGYFY/immortalwrt @ owrt      —— 内核 6.18，PPE 加速（新 edma/ppe 架构）
           #▲分支不单独给输入框的原因见下面那段注释（GitHub 表单不支持联动 + 浏览器 autofill）。
+          - LibWrt
           - OWrt-NSS
           - OWrt-PPE
-          - LibWrt
-      #★这里曾经有个 BRANCH 输入框，已删除 —— 不要再加回来：
+      #★这里不要再加 BRANCH 输入框：
       #GitHub 的 workflow_dispatch 表单不支持联动，选 SOURCE 不会让 BRANCH 自动填值，
       #而浏览器会 autofill 成旧默认值 main。一旦 BRANCH 非空，表达式就会优先用它，
       #结果是「选了 LibWrt 却去拉 main 分支」—— 拉不到，或者拉到非 NSS 的版本。
-      #分支与源码线强绑定，交给 SOURCE 带出即可；真要临时测别的分支，改下面
-      #WRT_BRANCH 那一行。
+      #分支与源码线强绑定，交给 SOURCE 带出即可。
       PACKAGE:
         required: false
         type: string
       TEST:
         description: '仅输出配置文件，不编译固件。'
-        #必须是布尔字面量：WRT-CORE 的 WRT_TEST 是 boolean，写成 'true' 字符串
-        #会被判为真值之外的语义，导致本工作流真的去编译固件
+        #必须是布尔字面量：WRT-CORE 的 WRT_TEST 是 boolean
         default: true
         required: true
         type: boolean
@@ -67,24 +63,23 @@ jobs:
       WRT_CONFIG: ${{inputs.CONFIG}}
       #默认主题
       WRT_THEME: argon
-      #默认主机名：OWrt-NSS / OWrt-PPE 都归到 OWrt，LibWrt 归 LibWrt
+      #默认主机名：OWrt 两条线都归到 OWrt，LibWrt 归 LibWrt
       WRT_NAME: ${{inputs.SOURCE == 'LibWrt' && 'LibWrt' || 'OWrt'}}
       #默认WIFI名称
       WRT_SSID: ${{inputs.SOURCE == 'LibWrt' && 'LibWrt' || 'OWrt'}}
       #默认WIFI密码
       WRT_WORD: 12345678
-      #默认地址：OWrt 线 10.x、LibWrt 线 20.x
-      WRT_IP: ${{inputs.SOURCE == 'LibWrt' && '192.168.20.1' || '192.168.10.1'}}
+      #默认地址
+      WRT_IP: 192.168.51.100
       #默认密码，仅作提示，修改无用
       WRT_PW: 无
       #源码链接
       WRT_REPO: ${{inputs.SOURCE == 'LibWrt' && 'https://github.com/LiBwrt/LibWrt.git' || 'https://github.com/VIKINGYFY/immortalwrt.git'}}
-      #源码分支：LibWrt→25.12-nss；OWrt-PPE→owrt（PPE、无 WiFi）；其余→main（NSS）
+      #源码分支：LibWrt→25.12-nss；OWrt-PPE→owrt（PPE）；其余→main（NSS）
       WRT_BRANCH: ${{inputs.SOURCE == 'LibWrt' && '25.12-nss' || (inputs.SOURCE == 'OWrt-PPE' && 'owrt' || 'main')}}
       #源码名称
       WRT_SOURCE: ${{inputs.SOURCE == 'LibWrt' && 'LiBwrt/LibWrt' || 'VIKINGYFY/immortalwrt'}}
       #插件调整
       WRT_PACKAGE: ${{inputs.PACKAGE}}
       #仅输出配置文件
-      #inputs.TEST 为空（workflow_run 触发时）兜底为 false，避免把空串传给 boolean 入参
       WRT_TEST: ${{inputs.TEST || false}}
