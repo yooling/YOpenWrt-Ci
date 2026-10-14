@@ -92,6 +92,26 @@ git clone --depth=1 --single-branch --branch master "https://github.com/huchd0/l
 mv -f ./package/netwiz-src/luci-app-netwiz ./package/luci-app-netwiz
 rm -rf ./package/netwiz-src
 
+#★必做：补执行位，否则编进固件后整个插件是坏的（2026-10-14 实测踩过，别删这几行）
+#  现象：ubus 里没有 netwiz 对象，前端所有调用都报
+#        "RPCError: RPC call to netwiz/set_network failed with error -32000: Object not found"；
+#        /etc/init.d/netwiz-* 也不能执行 → 防失联回滚（120s）完全不生效。
+#  原因：这个仓库里所有脚本在 git 里的权限都是 644（没有执行位），而 luci.mk 装包时用的是
+#        "cp -pR"（-p = 保留权限），于是 644 原样进包。官方 release 包不是这么来的 ——
+#        作者自己的 CI 里有一句 "打包前赋予后端脚本执行权限"，显式 chmod 了下面这 8 个文件，
+#        所以官方的 apk/ipk 是 755、装上就能用；我们从源码直接编就漏了这一步。
+#  下面这 8 行与作者 CI 一一对应；再加一条 find 兜底，作者以后新增脚本也能自动带上执行位。
+chmod 755 ./package/luci-app-netwiz/root/usr/libexec/rpcd/netwiz \
+          ./package/luci-app-netwiz/root/usr/libexec/rpcd/netwiz_dev \
+          ./package/luci-app-netwiz/root/usr/libexec/netwiz-autodetect.sh \
+          ./package/luci-app-netwiz/root/usr/libexec/netwiz-monitor-loop.sh \
+          ./package/luci-app-netwiz/root/etc/init.d/netwiz-monitor \
+          ./package/luci-app-netwiz/root/etc/init.d/netwiz-recovery \
+          ./package/luci-app-netwiz/root/etc/init.d/netwiz-watchdog \
+          ./package/luci-app-netwiz/root/etc/hotplug.d/dhcp/99-netwiz-guard 2>/dev/null
+find ./package/luci-app-netwiz/root/usr/libexec ./package/luci-app-netwiz/root/etc/init.d ./package/luci-app-netwiz/root/etc/hotplug.d \
+     -type f -exec chmod 755 {} + 2>/dev/null
+
 # natmapt 三件套已停用：本机家宽 NAT3~NAT4、无公网 IPv6，打洞类方案用不了，
 # 改用 EasyTier（打不通自动走中继，见 Config/GENERAL.config 的「网络向导 / 组网」段）。
 # 注释掉可以少 clone 三个源、少编译一批包。
