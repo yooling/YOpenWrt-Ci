@@ -79,9 +79,14 @@ UPDATE_PACKAGE "netwizard" "sirpdboy/luci-app-netwizard" "main"
 UPDATE_PACKAGE "partexp" "sirpdboy/luci-app-partexp" "main"
 UPDATE_PACKAGE "timecontrol" "sirpdboy/luci-app-timecontrol" "main"
 
-UPDATE_PACKAGE "natmapt" "muink/openwrt-natmapt" "master"
-UPDATE_PACKAGE "stuntman" "muink/openwrt-stuntman" "master"
-UPDATE_PACKAGE "luci-app-natmapt" "muink/luci-app-natmapt" "master"
+# natmapt 三件套已停用：本机家宽 NAT3~NAT4、无公网 IPv6，打洞类方案用不了，
+# 改用 EasyTier（打不通自动走中继，见 Config/GENERAL.config 的「网络向导 / 组网」段）。
+# 注释掉可以少 clone 三个源、少编译一批包。
+# ★恢复时必须和 Config/GENERAL.config（及 TEST.config）里的 luci-app-natmapt / stuntman-client
+#   一起改回 =y：只改配置不改这里 = 选中源码树里不存在的包，apk 阶段直接中断编译。
+#UPDATE_PACKAGE "natmapt" "muink/openwrt-natmapt" "master"
+#UPDATE_PACKAGE "stuntman" "muink/openwrt-stuntman" "master"
+#UPDATE_PACKAGE "luci-app-natmapt" "muink/luci-app-natmapt" "master"
 
 UPDATE_PACKAGE "airpi3000m-fancontrol" "LianXia233/luci-app-airpi3000m-fancontrol" "main"
 UPDATE_PACKAGE "chfs" "LianXia233/luci-app-chfs" "main"
