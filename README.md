@@ -60,7 +60,7 @@ Config/               自定义配置（.config 后缀）
 | --- | --- |
 | `Config/JDCloud-noWiFi.config` | 平台 + 亚瑟设备 + 关无线 + **存储三件套**（diskmanager / partexp / samba4） |
 | `Config/ZNM2-noWiFi.config` | 平台 + M2 设备 + 关无线 + 存储三件套不打（注释说明原因，需要时取消注释） |
-| `Config/GENERAL.config` | 两台共用的内核模块 / 组件 / 插件；含 nikki，关 homeproxy |
+| `Config/GENERAL.config` | 两台共用的内核模块 / 组件 / 插件；插件按用途分小类（科学上网 / 网络向导·组网 / 日常工具） |
 | `Config/TEST.config` | 测试用，自包含（含一份 GENERAL 的副本，改通用层时记得同步） |
 
 ## 五、相对上游改了什么
@@ -69,15 +69,23 @@ Config/               自定义配置（.config 后缀）
 
 1. **配置后缀 `.txt` → `.config`**（`WRT-CORE.yml`、`Settings.sh`、`.gitattributes` 同步调整）。
 2. **只留两台机器的配置**，其余机型配置删除；`Auto-Clean` / `Cache-Clean` 的 `schedule` 用注释停用（文件保留，手动仍可跑）。
-3. **`GENERAL.config`**：
-   - 关 `luci-app-homeproxy`（不用）；
-   - 加 `luci-app-nikki` + 中文语言包（sing-box 内核代理插件，darkrain88 那份同样默认开着，上游 `Packages.sh` 已默认 clone 该源）；
+3. **`GENERAL.config`** 的插件段按用途分了小类，加新插件时放进对应分类（没有就新建一个）：
+   - **科学上网**：关 `luci-app-homeproxy`（不用）；加 `luci-app-nikki` + 中文语言包
+     （sing-box 内核，darkrain88 那份同样默认开着，上游 `Packages.sh` 已默认 clone 该源）；
+   - **网络向导·组网**：加 `luci-app-netwizard`（网络设置向导，改上网方式的第一入口，
+     不能写成 `=m` —— 不进固件刷完菜单里看不到）与 `luci-app-easytier`（异地组网，
+     打不通自动走中继）；停用 `luci-app-natmapt` 与配套 `stuntman-client`
+     —— 本机家宽 NAT3~NAT4、无公网 IPv6，打洞类方案根本打不通；
+   - **日常工具**：`autoreboot` / `upnp` / `wolultra`；
    - 删 `luci-app-gecoosac`；
    - 把 `mini-diskmanager` / `partexp` / `samba4` 三个**存储类**插件下放到 `JDCloud-noWiFi.config`
      —— 它们是给有 eMMC 可扩容、能接盘的机器用的，M2（128MB NAND、无 USB 口）用不上。
 4. **`WRT-TEST.yml`**：下拉框只列本仓库的两份配置 + `TEST`，源码线与正式工作流同一套。
+5. **管理地址按源码线分网段**：OWrt 两条线 `192.168.10.1`、LibWrt `192.168.20.1`
+   （两条线的固件在同一网络里不会撞 IP）。
 
-`Scripts/` 三份脚本与上游**完全一致**（未做本地增删），`WRT-CORE.yml` 除上面第 1 点外也与上游一致。
+`Scripts/Packages.sh` 只注释了 natmapt 三件套（配合上面停用），其余与上游一致；
+`Handles.sh` / `Settings.sh` 与上游完全一致，`WRT-CORE.yml` 除第 1 点外也与上游一致。
 
 ## 六、怎么用
 
@@ -90,7 +98,8 @@ Config/               自定义配置（.config 后缀）
 
 刷机后：
 
-- 管理地址：`192.168.51.100`（两台统一，在对应工作流的 `WRT_IP` 里改）
+- 管理地址：OWrt 线（NSS / PPE）`192.168.10.1`，LibWrt 线 `192.168.20.1`
+  （在对应工作流的 `WRT_IP` 里改）
 - 默认密码：空（首次登录时设置）
 - 主机名 / 主题：`OWrt`（或 `LibWrt`，随源码线）/ `argon`
 
