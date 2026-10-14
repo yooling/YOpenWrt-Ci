@@ -75,9 +75,22 @@ UPDATE_PACKAGE "quickfile" "sbwml/luci-app-quickfile" "main"
 
 UPDATE_PACKAGE "ddns-go" "sirpdboy/luci-app-ddns-go" "main"
 UPDATE_PACKAGE "netspeedtest" "sirpdboy/netspeedtest" "main" "" "homebox ookla-speedtest"
-UPDATE_PACKAGE "netwizard" "sirpdboy/luci-app-netwizard" "main"
+#netwizard（sirpdboy）：已换成 NetWiz（huchd0）—— 刷入后确认要的是后者，详见下面那段。
+#UPDATE_PACKAGE "netwizard" "sirpdboy/luci-app-netwizard" "main"
 UPDATE_PACKAGE "partexp" "sirpdboy/luci-app-partexp" "main"
 UPDATE_PACKAGE "timecontrol" "sirpdboy/luci-app-timecontrol" "main"
+
+#======================= NetWiz（huchd0/luci-app-netwiz）=======================
+#网络设置向导 —— 就是「NetWiz」，不是 sirpdboy 那个 netwizard（上面那行已注释）。
+#★为什么不用 UPDATE_PACKAGE 的 pkg 模式：这个仓库的**仓库名与里面的包目录同名**
+#  （都叫 luci-app-netwiz）。pkg 模式会 cp ./package/luci-app-netwiz/luci-app-netwiz
+#  到 ./package/ —— 但 ./package/luci-app-netwiz 正是刚 clone 出来的仓库根（目录已存在），
+#  于是复制成嵌套子目录，紧接着的 "rm -rf $REPO_PATH" 又把刚拷进去的内容一起删掉，
+#  包直接消失。所以这里手动 clone 到临时目录 → 挪出包目录 → 删临时目录。
+rm -rf ./package/luci-app-netwiz ./package/netwiz-src
+git clone --depth=1 --single-branch --branch master "https://github.com/huchd0/luci-app-netwiz.git" ./package/netwiz-src
+mv -f ./package/netwiz-src/luci-app-netwiz ./package/luci-app-netwiz
+rm -rf ./package/netwiz-src
 
 # natmapt 三件套已停用：本机家宽 NAT3~NAT4、无公网 IPv6，打洞类方案用不了，
 # 改用 EasyTier（打不通自动走中继，见 Config/GENERAL.config 的「网络向导 / 组网」段）。
