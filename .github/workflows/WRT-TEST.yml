@@ -69,8 +69,8 @@ jobs:
       WRT_SSID: ${{inputs.SOURCE == 'LibWrt' && 'LibWrt' || 'OWrt'}}
       #默认WIFI密码
       WRT_WORD: 12345678
-      #默认地址
-      WRT_IP: 192.168.51.100
+      #默认地址：与两条正式工作流同一套规则 —— OWrt 两条线 10.1、LibWrt 20.1
+      WRT_IP: ${{inputs.SOURCE == 'LibWrt' && '192.168.20.1' || '192.168.10.1'}}
       #默认密码，仅作提示，修改无用
       WRT_PW: 无
       #源码链接
