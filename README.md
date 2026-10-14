@@ -72,9 +72,13 @@ Config/               自定义配置（.config 后缀）
 3. **`GENERAL.config`** 的插件段按用途分了小类，加新插件时放进对应分类（没有就新建一个）：
    - **科学上网**：关 `luci-app-homeproxy`（不用）；加 `luci-app-nikki` + 中文语言包
      （sing-box 内核，darkrain88 那份同样默认开着，上游 `Packages.sh` 已默认 clone 该源）；
-   - **网络向导·组网**：加 `luci-app-netwizard`（网络设置向导，改上网方式的第一入口，
-     不能写成 `=m` —— 不进固件刷完菜单里看不到）与 `luci-app-easytier`（异地组网，
-     打不通自动走中继）；停用 `luci-app-natmapt` 与配套 `stuntman-client`
+   - **网络向导·组网**：加 **`luci-app-netwiz`**（NetWiz，huchd0 的网络设置向导，改上网方式的第一入口，
+     不能写成 `=m` —— 不进固件刷完菜单里看不到）
+     ⚠ 不是 sirpdboy 的 `luci-app-netwizard`，两者名字只差两个字母、别写错；
+     `Packages.sh` 里因此单独手写了一段 clone（该仓库的仓库名与包目录同名，`UPDATE_PACKAGE`
+     的 `pkg` 模式会把包嵌套复制后又删掉）；
+     另加 `luci-app-easytier`（异地组网，打不通自动走中继）；
+     停用 `luci-app-natmapt` 与配套 `stuntman-client`
      —— 本机家宽 NAT3~NAT4、无公网 IPv6，打洞类方案根本打不通；
    - **日常工具**：`autoreboot` / `upnp` / `wolultra`；
    - 删 `luci-app-gecoosac`；
