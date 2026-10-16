@@ -148,48 +148,77 @@ fi
 #  装不下也跑不动，所以「选进固件」那几行只写在 Config/JDCloud-noWiFi.config，
 #  不写进 GENERAL.config（那边是两台共用的）。
 #  源码这里照拉 —— 没被选中的包不会被编译，M2 那条线不会因此变慢。
-#★feeds 里自带了一套老 docker（utils/docker、utils/dockerd、utils/docker-compose），
-#  包名和我们这份完全重名，必须先删掉（第 5 个参数干的就是这个）；
-#  再手动清一遍 package/feeds/ 下的软链接 —— Update Feeds 这一步在 Packages.sh 之前就跑完了，
-#  软链接已经建好，只删 feeds/ 里的实体目录会留下断链。
-UPDATE_PACKAGE "dockerman" "XiaoHaiSly/luci-app-dockerman" "main" "" "docker containerd runc luci-lib-docker"
-rm -f ./package/feeds/packages/*docker* ./package/feeds/packages/compose 2>/dev/null
+#★落位：5 个底层组件「替换进 feeds/packages/utils/」，不是整仓留在 ./package/ 下
+#  （2026-10-16 改，思路来自群友十六夜）
+#  这套 Makefile 本来就是按「包就在 feeds/packages/utils/ 下」写的，满是相对路径：
+#     include ../../lang/golang/golang-package.mk     ← utils/X 往上两级才是 lang/golang
+#     ../tini/Makefile   ../containerd/Makefile   ../runc/Makefile   ../docker/Makefile
+#     $(CURDIR)/../dockerd/git-short-commit.sh
+#  以前整仓 clone 到 ./package/ 下，这些相对路径全部指错，连着踩了三坑：
+#     runc 的 include → docker-compose 的 include → dockerd 的 tini 校验，
+#     每次都等价于白跑一整轮云编译。
+#  换成塞进 feeds/packages/utils/ 覆盖 feed 自带那份之后，相对路径天然成立，
+#  上游以后再加 Go 包、再加 ../ 校验都不会再来第四回。
+#  留在 ./package/luci-app-dockerman/ 下的只有 luci-app-dockerman 和 luci-lib-docker
+#  这两个 LuCI 界面包（它们没有相对路径依赖，不动）。
+#★第 5 个参数只删 feeds 里的 LuCI 同名包，绝不写 "docker" ——
+#  通配符杀伤力太强，会顺手删掉 python-docker / python-dockerpty 这类无关包；
+#  docker/dockerd/docker-compose/containerd/runc 是打算直接覆盖的，用不着删。
+#★同理：绝不能再手动清 package/feeds/packages/ 下的软链接 ——
+#  Update Feeds 时 feed 给这 5 个包都建过软链接，正是要靠它们把包扫进编译系统，
+#  删了就直接找不到包。（旧版那句 rm -f ./package/feeds/packages/*docker* 已删除）
+UPDATE_PACKAGE "dockerman" "XiaoHaiSly/luci-app-dockerman" "main" "" "luci-lib-docker dockerman"
 
-#★三处必须打补丁，否则编译直接断（2026-10-16 逐个核对过，别删）
-#  1) runc 的 Makefile 用的是相对路径 include ../../lang/golang/golang-package.mk ——
-#     那是「放在 feeds/packages/utils/ 下」才成立的写法；我们放在 ./package/ 下，
-#     ../../ 会指到仓库外面去 → 改成绝对路径。
-if [ -f ./package/luci-app-dockerman/runc/Makefile ]; then
-	sed -i 's|include ../../lang/golang/golang-package.mk|include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk|' ./package/luci-app-dockerman/runc/Makefile
-fi
+#把 5 个底层组件替换进 packages feed（Packages.sh 跑在 Update Feeds 之后，软链接已建好）
+DOCKER_FEED_PATH="./feeds/packages/utils"
+DOCKER_PKGS="docker dockerd containerd runc docker-compose"
+mkdir -p "$DOCKER_FEED_PATH"
+for DOCKER_PKG in $DOCKER_PKGS; do
+	if [ -d "./package/luci-app-dockerman/$DOCKER_PKG" ]; then
+		rm -rf "$DOCKER_FEED_PATH/$DOCKER_PKG"
+		mv -f "./package/luci-app-dockerman/$DOCKER_PKG" "$DOCKER_FEED_PATH/$DOCKER_PKG"
+		echo "docker: replaced $DOCKER_FEED_PATH/$DOCKER_PKG"
+	fi
+done
+#兜底：万一 feed 没给某个包建软链接（实测 5 个都有），手动补一条，否则这包扫不进编译系统
+mkdir -p ./package/feeds/packages
+for DOCKER_PKG in $DOCKER_PKGS; do
+	if [ ! -e "./package/feeds/packages/$DOCKER_PKG/Makefile" ]; then
+		ln -sfn "$(pwd)/$DOCKER_FEED_PATH/$DOCKER_PKG" "./package/feeds/packages/$DOCKER_PKG"
+		echo "docker: linked ./package/feeds/packages/$DOCKER_PKG"
+	fi
+done
+
+#★下面四处补丁在新落位下其实已经可以不打，但保留作为安全网：
+#  它们改完都是绝对路径，在两种落位下都成立；以后万一有人把这批包挪回去也不会再炸。
+#  1) 用 Go 编译的包（runc、docker-compose）写的相对 include ../../lang/golang/… ——
+#     原来在 ./package/ 下会指到仓库外面去（二跑 docker-compose 就断在第 26 行）。
+for DOCKER_PKG in $DOCKER_PKGS; do
+	DOCKER_MK="$DOCKER_FEED_PATH/$DOCKER_PKG/Makefile"
+	[ -f "$DOCKER_MK" ] || continue
+	sed -i 's|include ../../lang/golang/golang-package.mk|include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk|' "$DOCKER_MK"
+done
 #  2) docker(CLI) 在 Build/Prepare 里拿 $(CURDIR)/../dockerd/git-short-commit.sh 校验 commit，
-#     $(CURDIR) 在 OpenWrt 里到底指编译根目录还是包目录并不稳定 → 一律改成绝对路径，
-#     不管它落在哪都指向同一处。
-if [ -f ./package/luci-app-dockerman/docker/Makefile ]; then
-	sed -i 's|\$(CURDIR)/../dockerd/git-short-commit.sh|$(TOPDIR)/package/luci-app-dockerman/dockerd/git-short-commit.sh|' ./package/luci-app-dockerman/docker/Makefile
+#     $(CURDIR) 到底指编译根目录还是包目录并不稳定 → 一律改成绝对路径，落到 feeds 里这份。
+if [ -f "$DOCKER_FEED_PATH/docker/Makefile" ]; then
+	sed -i 's|\$(CURDIR)/../dockerd/git-short-commit.sh|$(TOPDIR)/feeds/packages/utils/dockerd/git-short-commit.sh|' "$DOCKER_FEED_PATH/docker/Makefile"
 fi
 #  3) dockerd 依赖 uci-firewall，但这个包在 immortalwrt/packages、openwrt/packages、
 #     immortalwrt 主干里全都搜不到（只在第三方小包仓库里见过），依赖解析不了会中断整轮编译；
 #     翻过 dockerd.init —— 它只用 uci 命令改防火墙配置，并不需要这个包 → 去掉这行依赖。
-if [ -f ./package/luci-app-dockerman/dockerd/Makefile ]; then
-	sed -i '/+uci-firewall/d' ./package/luci-app-dockerman/dockerd/Makefile
+if [ -f "$DOCKER_FEED_PATH/dockerd/Makefile" ]; then
+	sed -i '/+uci-firewall/d' "$DOCKER_FEED_PATH/dockerd/Makefile"
 fi
-#  4) dockerd 的 Build/Prepare 里还有一处 tini 版本校验，写的是相对路径 ../tini/Makefile ——
-#     这只在「整套包放进 feeds/packages/utils/ 下」时才成立（../tini 才等于 utils/tini），
-#     也就是作者仓库原本假设的落位；而我们放在 ./package/ 下 → ../tini/Makefile 不存在。
-#     更要命的是作者上游现在压根没带 tini 目录（仓库里只有 containerd/docker/dockerd/
-#     runc/docker-compose/luci-app-dockerman/luci-lib-docker），所以这行必然踩空：
-#       grep: ../tini/Makefile: No such file or directory
-#       ERROR: dockerd Expected 'PKG_VERSION:=0.19.0' in '../tini/Makefile', found 'PKG_VERSION:='
-#       make[3]: *** [Makefile:199: .../.prepared_...] Error 1
-#     真正提供 tini 的是 packages feed 里的 utils/tini，版本 0.19.0，与 dockerd 期望值一致，
-#     所以把这行校验指向 feed 里那份（绝对路径，和上面第 1、2 条同款改法）；
-#     万一哪天 feed 里把它挪走/改名，就退一步直接删掉这行校验，绝不留下悬空的检查。
-if [ -f ./package/luci-app-dockerman/dockerd/Makefile ]; then
-	if [ -f ./feeds/packages/utils/tini/Makefile ]; then
-		sed -i 's|call EnsureVendoredVersion,\.\./tini/Makefile|call EnsureVendoredVersion,$(TOPDIR)/feeds/packages/utils/tini/Makefile|' ./package/luci-app-dockerman/dockerd/Makefile
+#  4) dockerd 校验 ../tini/Makefile 的版本要等于 0.19.0，而 feed 里那份就在
+#     feeds/packages/utils/tini（同为 0.19.0）；上游自己的仓库压根没带 tini 目录，
+#     所以这行以前必然踩空（grep 报 No such file → Prepared 退出 1 → 整轮 world 编译断）。
+#     正常就应该指向 feed 那份；万一哪天 feed 把它挪走/改名，就退一步删掉这行校验，
+#     绝不留下悬空检查。
+if [ -f "$DOCKER_FEED_PATH/dockerd/Makefile" ]; then
+	if [ -f "$DOCKER_FEED_PATH/tini/Makefile" ]; then
+		sed -i 's|call EnsureVendoredVersion,\.\./tini/Makefile|call EnsureVendoredVersion,$(TOPDIR)/feeds/packages/utils/tini/Makefile|' "$DOCKER_FEED_PATH/dockerd/Makefile"
 	else
-		sed -i '/call EnsureVendoredVersion,\.\.\/tini\//d' ./package/luci-app-dockerman/dockerd/Makefile
+		sed -i '/call EnsureVendoredVersion,\.\.\/tini\//d' "$DOCKER_FEED_PATH/dockerd/Makefile"
 	fi
 fi
 
