@@ -11,8 +11,8 @@
 
 | 机器 | 配置 | 硬件 | 关键差异 |
 | --- | --- | --- | --- |
-| 京东云亚瑟 RE-SS-01 / AX1800 Pro | `JDCloud-noWiFi` | IPQ6000，1GB 硬改内存 + **64GB eMMC**，带 USB 口 | 空间富余，装存储类插件（分区扩容 / 磁盘管理 / 文件共享） |
-| 兆能 ZN-M2 | `ZNM2-noWiFi` | IPQ6000，512MB 内存 + **128MB NAND**，无 WiFi、无 USB 口 | 空间紧张，做减法；存储类插件一个不装 |
+| 京东云亚瑟 RE-SS-01 / AX1800 Pro | `JDCloud-noWiFi` | IPQ6000，1GB 硬改内存 + **64GB eMMC**，带 USB 口 | 空间富余，装存储类插件（分区扩容 / 磁盘管理 / 文件共享）+ **Docker** |
+| 兆能 ZN-M2 | `ZNM2-noWiFi` | IPQ6000，512MB 内存 + **128MB NAND**，无 WiFi、无 USB 口 | 空间紧张，做减法；存储类插件一个不装，**也不装 Docker** |
 
 两台都是**无 WiFi 版**：无线驱动（ath11k 及固件）在各自配置里显式关掉。
 
@@ -58,9 +58,9 @@ Config/               自定义配置（.config 后缀）
 
 | 文件 | 内容 |
 | --- | --- |
-| `Config/JDCloud-noWiFi.config` | 平台 + 亚瑟设备 + 关无线 + **存储三件套**（diskmanager / partexp / samba4） |
+| `Config/JDCloud-noWiFi.config` | 平台 + 亚瑟设备 + 关无线 + **存储三件套**（diskmanager / partexp / samba4）+ **Docker 全套**（含内核开关、`rootfs` 分区调大） |
 | `Config/ZNM2-noWiFi.config` | 平台 + M2 设备 + 关无线 + 存储三件套不打（注释说明原因，需要时取消注释） |
-| `Config/GENERAL.config` | 两台共用的内核模块 / 组件 / 插件；插件按用途分小类（科学上网 / 网络向导·组网 / 日常工具） |
+| `Config/GENERAL.config` | 两台共用的内核模块 / 组件 / 插件；插件按用途分小类（科学上网 / 网络向导·组网 / 远程访问·内网穿透 / 日常工具） |
 | `Config/TEST.config` | 测试用，自包含（含一份 GENERAL 的副本，改通用层时记得同步） |
 
 ## 五、相对上游改了什么
@@ -76,10 +76,18 @@ Config/               自定义配置（.config 后缀）
      不能写成 `=m` —— 不进固件刷完菜单里看不到）
      ⚠ 不是 sirpdboy 的 `luci-app-netwizard`，两者名字只差两个字母、别写错；
      `Packages.sh` 里因此单独手写了一段 clone（该仓库的仓库名与包目录同名，`UPDATE_PACKAGE`
-     的 `pkg` 模式会把包嵌套复制后又删掉）；
+     的 `pkg` 模式会把包嵌套复制后又删掉），**并在 clone 后 chmod 755 补齐 8 个脚本的执行位**
+     —— 该仓库源码里这些脚本没有执行位，`luci.mk` 装包用 `cp -pR` 会原样保留，
+     编进固件就会导致 `rpcd` 加载不到 `netwiz` 对象（前端全部报 `-32000 Object not found`）、
+     防失联回滚脚本也跑不起来。详见 `Packages.sh` 里那段「必做」注释；
      另加 `luci-app-easytier`（异地组网，打不通自动走中继）；
      停用 `luci-app-natmapt` 与配套 `stuntman-client`
      —— 本机家宽 NAT3~NAT4、无公网 IPv6，打洞类方案根本打不通；
+   - **远程访问·内网穿透**：加 **`ddnsto` + `luci-app-ddnsto`**（官方包仓库
+     `linkease/ddnsto-openwrt-package`）。和 EasyTier 不冲突：EasyTier 是组网（连上等于人在家里），
+     DDNSTO 是单点穿透（把某个网页 / 端口映射到外网，不用装客户端），且走服务端中转、
+     不受 NAT3~NAT4 限制。版本是「主程序 4.2.6 + 界面 4.2.2」，官方仓库当前就这个组合，
+     详见 `GENERAL.config` 里的注释；
    - **日常工具**：`autoreboot` / `upnp` / `wolultra`；
    - 删 `luci-app-gecoosac`；
    - 把 `mini-diskmanager` / `partexp` / `samba4` 三个**存储类**插件下放到 `JDCloud-noWiFi.config`
@@ -87,8 +95,24 @@ Config/               自定义配置（.config 后缀）
 4. **`WRT-TEST.yml`**：下拉框只列本仓库的两份配置 + `TEST`，源码线与正式工作流同一套。
 5. **管理地址按源码线分网段**：OWrt 两条线 `192.168.10.1`、LibWrt `192.168.20.1`
    （两条线的固件在同一网络里不会撞 IP）。
+6. **Docker（只给亚瑟）**：`Config/JDCloud-noWiFi.config` 里选 `luci-app-dockerman` + 中文包 +
+   `docker-compose` + `iptables-nft` + `kmod-macvlan`，源码用 `XiaoHaiSly/luci-app-dockerman`
+   （整套版本由作者仓库每天自动跟 moby 发版同步，不用自己追）。
+   配套改了三样，`Packages.sh` 里都有「必做」注释：
+   - **内核开关**：`CONFIG_KERNEL_NAMESPACES / CGROUPS / MEMCG / SECCOMP / POSIX_MQUEUE …` 一大组。
+     上游 `target/linux/generic/config-6.18` 里这些默认全是 `is not set`，不开容器起不来；
+   - **`CONFIG_TARGET_ROOTFS_PARTSIZE=512`**：默认 rootfs 分区只有 104MB，装不下 docker，
+     打包时 `pad-rootfs` 会直接报「rootfs 太大」中断编译；亚瑟是 64GB eMMC，给 512MB 很宽裕；
+   - **三个补丁**：① `runc` 的 `include ../../lang/golang/...` 相对路径改绝对路径（它原本只在
+     `feeds/packages/utils/` 下成立）；② `docker` CLI 校验 commit 时的
+     `$(CURDIR)/../dockerd/git-short-commit.sh` 改绝对路径；③ 删掉 `dockerd` 对 `uci-firewall`
+     的依赖 —— 这个包在 immortalwrt / openwrt 的 feeds 和主干里都搜不到，依赖解析不了会中断编译，
+     而 `dockerd.init` 只用 `uci` 命令改防火墙，并不需要它。
+   另外 feeds 里自带的一套老 `docker` / `dockerd` / `docker-compose` 会整包重名，
+   `Packages.sh` 里已顺手清掉（含 `package/feeds/` 下的软链接）。
 
-`Scripts/Packages.sh` 只注释了 natmapt 三件套（配合上面停用），其余与上游一致；
+`Scripts/Packages.sh` 除上游原样外，只注释了 natmapt 三件套（配合上面停用）、
+新增了 DDNSTO 与 Docker 两段（含各自的补丁）；
 `Handles.sh` / `Settings.sh` 与上游完全一致，`WRT-CORE.yml` 除第 1 点外也与上游一致。
 
 ## 六、怎么用
@@ -106,6 +130,8 @@ Config/               自定义配置（.config 后缀）
   （在对应工作流的 `WRT_IP` 里改）
 - 默认密码：空（首次登录时设置）
 - 主机名 / 主题：`OWrt`（或 `LibWrt`，随源码线）/ `argon`
+- Docker（仅亚瑟）：数据目录默认 `/opt/docker`，服务 `/etc/init.d/dockerd`，
+  想在局域网里直接访问容器用 macvlan（对应包已装）
 
 ## 七、几个已踩过的坑（别改回去）
 
@@ -113,3 +139,8 @@ Config/               自定义配置（.config 后缀）
   kmod-fs-ext4、automount …），把配置行**注释掉**等于用 target 的默认值，包照样进固件。
 - **设备列表只列自己那台**。列了就会一起编进固件包，体积和编译时间都翻倍。
 - **别往 `GENERAL.config` 加只有一台机器要的包**，理由见第四节第 2 条。
+- **Docker 的两条连带项不能省**：只写 `luci-app-dockerman=y` 而不开那组 `CONFIG_KERNEL_*`，
+  容器起不来；不调 `CONFIG_TARGET_ROOTFS_PARTSIZE`，打包阶段就断。两者都写在
+  `JDCloud-noWiFi.config` 里，改配置时别当成冗余删掉。
+- **第三方 Go 包（docker / containerd / runc / compose）会显著拉长编译时间**
+  （Go 工具链 + 大仓库编译），亚瑟那条线会比 M2 慢不少，是正常的。
