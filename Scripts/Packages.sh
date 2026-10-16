@@ -174,6 +174,24 @@ fi
 if [ -f ./package/luci-app-dockerman/dockerd/Makefile ]; then
 	sed -i '/+uci-firewall/d' ./package/luci-app-dockerman/dockerd/Makefile
 fi
+#  4) dockerd 的 Build/Prepare 里还有一处 tini 版本校验，写的是相对路径 ../tini/Makefile ——
+#     这只在「整套包放进 feeds/packages/utils/ 下」时才成立（../tini 才等于 utils/tini），
+#     也就是作者仓库原本假设的落位；而我们放在 ./package/ 下 → ../tini/Makefile 不存在。
+#     更要命的是作者上游现在压根没带 tini 目录（仓库里只有 containerd/docker/dockerd/
+#     runc/docker-compose/luci-app-dockerman/luci-lib-docker），所以这行必然踩空：
+#       grep: ../tini/Makefile: No such file or directory
+#       ERROR: dockerd Expected 'PKG_VERSION:=0.19.0' in '../tini/Makefile', found 'PKG_VERSION:='
+#       make[3]: *** [Makefile:199: .../.prepared_...] Error 1
+#     真正提供 tini 的是 packages feed 里的 utils/tini，版本 0.19.0，与 dockerd 期望值一致，
+#     所以把这行校验指向 feed 里那份（绝对路径，和上面第 1、2 条同款改法）；
+#     万一哪天 feed 里把它挪走/改名，就退一步直接删掉这行校验，绝不留下悬空的检查。
+if [ -f ./package/luci-app-dockerman/dockerd/Makefile ]; then
+	if [ -f ./feeds/packages/utils/tini/Makefile ]; then
+		sed -i 's|call EnsureVendoredVersion,\.\./tini/Makefile|call EnsureVendoredVersion,$(TOPDIR)/feeds/packages/utils/tini/Makefile|' ./package/luci-app-dockerman/dockerd/Makefile
+	else
+		sed -i '/call EnsureVendoredVersion,\.\.\/tini\//d' ./package/luci-app-dockerman/dockerd/Makefile
+	fi
+fi
 
 UPDATE_PACKAGE "airpi3000m-fancontrol" "LianXia233/luci-app-airpi3000m-fancontrol" "main"
 UPDATE_PACKAGE "chfs" "LianXia233/luci-app-chfs" "main"
