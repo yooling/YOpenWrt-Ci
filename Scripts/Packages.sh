@@ -121,6 +121,60 @@ find ./package/luci-app-netwiz/root/usr/libexec ./package/luci-app-netwiz/root/e
 #UPDATE_PACKAGE "stuntman" "muink/openwrt-stuntman" "master"
 #UPDATE_PACKAGE "luci-app-natmapt" "muink/luci-app-natmapt" "master"
 
+#======================= DDNSTO（linkease/ddnsto-openwrt-package）=======================
+#内网穿透 / 远程访问。用官方自己维护的包仓库，里面两个包目录都要：
+#  ddnsto          —— 主程序。闭源二进制，编译时从 koolcenter 拉预编译包（aarch64 那份）
+#  luci-app-ddnsto —— LuCI 界面
+#★不用 pkg 模式：两个包都要，直接整仓 clone 到 ./package/ 下最省事
+#  （跟上面 sbwml 那几个仓库一个玩法，OpenWrt 能认到 ./package/<仓库>/<包> 这一层）。
+#  第 5 个参数只是先把 feeds 里可能存在的同名旧包清掉。
+UPDATE_PACKAGE "ddnsto" "linkease/ddnsto-openwrt-package" "main" "" "luci-app-ddnsto"
+
+#★必做：换掉主程序二进制的下载地址（2026-10-16 实测，别删这一行）
+#  官方 Makefile 里写的是 fw0.koolcenter.com，实测直接 404（只回 18 字节的 Not Found）；
+#  fw.koolcenter.com 才是对的 —— 拉下来 16MB，sha256 与 Makefile 里的 PKG_HASH 完全一致。
+#  这里改成「fw 在前、fw0 兜底」：download 按空格依次尝试，两个都挂了才会真的断编译。
+if [ -f ./package/ddnsto-openwrt-package/ddnsto/Makefile ]; then
+	sed -i 's|https://fw0\.koolcenter\.com/binary/ddnsto/linux-binary/|https://fw.koolcenter.com/binary/ddnsto/linux-binary/ https://fw0.koolcenter.com/binary/ddnsto/linux-binary/|g' ./package/ddnsto-openwrt-package/ddnsto/Makefile
+fi
+
+#======================= Docker（XiaoHaiSly/luci-app-dockerman）=======================
+#整套组件都在一个仓库里：
+#  dockerd(守护进程) / docker(CLI) / containerd / runc / docker-compose /
+#  luci-app-dockerman(界面) / luci-lib-docker(界面依赖库)
+#版本不用自己追：作者仓库每天自动跟 moby 发版同步
+#  （核对时是 dockerd & docker 29.9.1、containerd 2.4.2、runc 1.5.2、compose 5.6.0）。
+#★只给亚瑟装：1GB 内存 + 64GB eMMC 才有意义，兆能 M2（512MB 内存 + 128MB NAND）
+#  装不下也跑不动，所以「选进固件」那几行只写在 Config/JDCloud-noWiFi.config，
+#  不写进 GENERAL.config（那边是两台共用的）。
+#  源码这里照拉 —— 没被选中的包不会被编译，M2 那条线不会因此变慢。
+#★feeds 里自带了一套老 docker（utils/docker、utils/dockerd、utils/docker-compose），
+#  包名和我们这份完全重名，必须先删掉（第 5 个参数干的就是这个）；
+#  再手动清一遍 package/feeds/ 下的软链接 —— Update Feeds 这一步在 Packages.sh 之前就跑完了，
+#  软链接已经建好，只删 feeds/ 里的实体目录会留下断链。
+UPDATE_PACKAGE "dockerman" "XiaoHaiSly/luci-app-dockerman" "main" "" "docker containerd runc luci-lib-docker"
+rm -f ./package/feeds/packages/*docker* ./package/feeds/packages/compose 2>/dev/null
+
+#★三处必须打补丁，否则编译直接断（2026-10-16 逐个核对过，别删）
+#  1) runc 的 Makefile 用的是相对路径 include ../../lang/golang/golang-package.mk ——
+#     那是「放在 feeds/packages/utils/ 下」才成立的写法；我们放在 ./package/ 下，
+#     ../../ 会指到仓库外面去 → 改成绝对路径。
+if [ -f ./package/luci-app-dockerman/runc/Makefile ]; then
+	sed -i 's|include ../../lang/golang/golang-package.mk|include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk|' ./package/luci-app-dockerman/runc/Makefile
+fi
+#  2) docker(CLI) 在 Build/Prepare 里拿 $(CURDIR)/../dockerd/git-short-commit.sh 校验 commit，
+#     $(CURDIR) 在 OpenWrt 里到底指编译根目录还是包目录并不稳定 → 一律改成绝对路径，
+#     不管它落在哪都指向同一处。
+if [ -f ./package/luci-app-dockerman/docker/Makefile ]; then
+	sed -i 's|\$(CURDIR)/../dockerd/git-short-commit.sh|$(TOPDIR)/package/luci-app-dockerman/dockerd/git-short-commit.sh|' ./package/luci-app-dockerman/docker/Makefile
+fi
+#  3) dockerd 依赖 uci-firewall，但这个包在 immortalwrt/packages、openwrt/packages、
+#     immortalwrt 主干里全都搜不到（只在第三方小包仓库里见过），依赖解析不了会中断整轮编译；
+#     翻过 dockerd.init —— 它只用 uci 命令改防火墙配置，并不需要这个包 → 去掉这行依赖。
+if [ -f ./package/luci-app-dockerman/dockerd/Makefile ]; then
+	sed -i '/+uci-firewall/d' ./package/luci-app-dockerman/dockerd/Makefile
+fi
+
 UPDATE_PACKAGE "airpi3000m-fancontrol" "LianXia233/luci-app-airpi3000m-fancontrol" "main"
 UPDATE_PACKAGE "chfs" "LianXia233/luci-app-chfs" "main"
 UPDATE_PACKAGE "fm350" "LianXia233/luci-app-fm350" "main"
