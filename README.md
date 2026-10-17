@@ -11,8 +11,11 @@
 
 | 机器 | 配置 | 硬件 | 关键差异 |
 | --- | --- | --- | --- |
-| 京东云亚瑟 RE-SS-01 / AX1800 Pro | `JDCloud-noWiFi` | IPQ6000，1GB 硬改内存 + **64GB eMMC**，带 USB 口 | 空间富余，装存储类插件（分区扩容 / 磁盘管理 / 文件共享）+ **Docker** |
-| 兆能 ZN-M2 | `ZNM2-noWiFi` | IPQ6000，512MB 内存 + **128MB NAND**，无 WiFi、无 USB 口 | 空间紧张，做减法；存储类插件一个不装，**也不装 Docker** |
+| 京东云亚瑟 RE-SS-01 / AX1800 Pro | `JDCloud-noWiFi` | IPQ6000，1GB 硬改内存 + **64GB eMMC**，带 USB 口 | 空间富余，装存储类插件（分区扩容 / 磁盘管理 / 文件共享）+ **Docker** + **iStore / QuickStart** |
+| 兆能 ZN-M2 | `ZNM2-noWiFi` | IPQ6000，512MB 内存 + **128MB NAND**，无 WiFi、无 USB 口 | 空间紧张，做减法；存储类插件一个不装，**也不装 Docker / iStore** |
+
+> **网络向导两台各用一套**：亚瑟用 QuickStart 里的 **NetworkGuide**，M2 用 **NetWiz**。
+> 所以 NetWiz 不在通用层，而是写在 `ZNM2-noWiFi.config` 里（见第五节第 3 点）。
 
 两台都是**无 WiFi 版**：无线驱动（ath11k 及固件）在各自配置里显式关掉。
 
@@ -58,9 +61,9 @@ Config/               自定义配置（.config 后缀）
 
 | 文件 | 内容 |
 | --- | --- |
-| `Config/JDCloud-noWiFi.config` | 平台 + 亚瑟设备 + 关无线 + **存储三件套**（diskmanager / partexp / samba4）+ **Docker 全套**（含内核开关、`rootfs` 分区调大） |
-| `Config/ZNM2-noWiFi.config` | 平台 + M2 设备 + 关无线 + 存储三件套不打（注释说明原因，需要时取消注释） |
-| `Config/GENERAL.config` | 两台共用的内核模块 / 组件 / 插件；插件按用途分小类（科学上网 / 网络向导·组网 / 远程访问·内网穿透 / 日常工具） |
+| `Config/JDCloud-noWiFi.config` | 平台 + 亚瑟设备 + 关无线 + **存储三件套**（diskmanager / partexp / samba4）+ **iStore / QuickStart 全套** + **Docker 全套**（含内核开关、`rootfs` 分区调大） |
+| `Config/ZNM2-noWiFi.config` | 平台 + M2 设备 + 关无线 + **NetWiz**（M2 的网络向导）+ 存储三件套不打（注释说明原因，需要时取消注释） |
+| `Config/GENERAL.config` | 两台共用的内核模块 / 组件 / 插件；插件按用途分小类（科学上网 / 组网 / 远程访问·内网穿透 / 日常工具） |
 | `Config/TEST.config` | 测试用，自包含（含一份 GENERAL 的副本，改通用层时记得同步） |
 
 ## 五、相对上游改了什么
@@ -72,17 +75,10 @@ Config/               自定义配置（.config 后缀）
 3. **`GENERAL.config`** 的插件段按用途分了小类，加新插件时放进对应分类（没有就新建一个）：
    - **科学上网**：关 `luci-app-homeproxy`（不用）；加 `luci-app-nikki` + 中文语言包
      （sing-box 内核，darkrain88 那份同样默认开着，上游 `Packages.sh` 已默认 clone 该源）；
-   - **网络向导·组网**：加 **`luci-app-netwiz`**（NetWiz，huchd0 的网络设置向导，改上网方式的第一入口，
-     不能写成 `=m` —— 不进固件刷完菜单里看不到）
-     ⚠ 不是 sirpdboy 的 `luci-app-netwizard`，两者名字只差两个字母、别写错；
-     `Packages.sh` 里因此单独手写了一段 clone（该仓库的仓库名与包目录同名，`UPDATE_PACKAGE`
-     的 `pkg` 模式会把包嵌套复制后又删掉），**并在 clone 后 chmod 755 补齐 8 个脚本的执行位**
-     —— 该仓库源码里这些脚本没有执行位，`luci.mk` 装包用 `cp -pR` 会原样保留，
-     编进固件就会导致 `rpcd` 加载不到 `netwiz` 对象（前端全部报 `-32000 Object not found`）、
-     防失联回滚脚本也跑不起来。详见 `Packages.sh` 里那段「必做」注释；
-     另加 `luci-app-easytier`（异地组网，打不通自动走中继）；
+   - **组网**：加 `luci-app-easytier`（异地组网，打不通自动走中继）；
      停用 `luci-app-natmapt` 与配套 `stuntman-client`
      —— 本机家宽 NAT3~NAT4、无公网 IPv6，打洞类方案根本打不通；
+     **网络向导不写在通用层**（两台各用一套，见下面第 7 点）；
    - **远程访问·内网穿透**：加 **`ddnsto` + `luci-app-ddnsto`**（官方包仓库
      `linkease/ddnsto-openwrt-package`）。和 EasyTier 不冲突：EasyTier 是组网（连上等于人在家里），
      DDNSTO 是单点穿透（把某个网页 / 端口映射到外网，不用装客户端），且走服务端中转、
@@ -110,9 +106,29 @@ Config/               自定义配置（.config 后缀）
      而 `dockerd.init` 只用 `uci` 命令改防火墙，并不需要它。
    另外 feeds 里自带的一套老 `docker` / `dockerd` / `docker-compose` 会整包重名，
    `Packages.sh` 里已顺手清掉（含 `package/feeds/` 下的软链接）。
+   依赖清单是**逐项核过** ZqinKing 的 `docker_deps.config` 之后定的，只采纳了 3 项
+   （`kmod-nf-ipvs` / `kmod-br-netfilter` / `libseccomp`）；他那份里剩下的
+   `kmod-ipt-*` 那一批是 iptables 旧后端遗留（v29 dockerd 已全面走 nftables），
+   `kmod-crypto-*` / `kmod-lib-*` 是 btrfs 的底层依赖（通用层已开 `kmod-fs-btrfs`，会自动带出），
+   `nftables` 这个符号本身不存在 —— 详见 `JDCloud-noWiFi.config` 里的判定注释。
+7. **iStore / QuickStart（只给亚瑟）**：成品界面是
+   `https://<路由>/cgi-bin/luci/admin/quickstart/` 那一页，菜单含
+   **QuickStart 仪表盘 / NetworkGuide 网络向导 / NetworkPort 网口配置 / iStoreX 首页 / iStore 商店**。
+   入口包是 `luci-app-istorex`，它的 `LUCI_DEPENDS` 会自动带出
+   `luci-app-quickstart` + `luci-app-store` + `luci-lib-taskd` ——
+   但**依赖带出来的是 `=m`（编成包、不进固件镜像），刷完菜单里看不到**，
+   所以 `JDCloud-noWiFi.config` 里把每一个要用的包都显式写成了 `=y`。
+   配套还有 `lucky` / `adguardhome` / `emmc-health` / `oaf` / `sqm` / `vlmcsd` / `quickfile`。
+   三个必打补丁（理由都写在 `Packages.sh` 里）：
+   - `quickstart` 去掉 `+mdadm`（软 RAID，用不上还会拖进一堆 `kmod-md-*` 内核模块）；
+   - `luci-app-adguardhome` 的 `+ca-certs` 改成 `+ca-certificates`（前者源码树里根本没有）；
+   - `luci-app-emmc-health` 去掉 `+luci-js-deps`（主干里没有这个包）。
+   **明确剔除**：`passwall` / `mosdns` / `smartdns` / `cups` 打印 / `pbr` 策略路由 /
+   `athena-led`（京东云雅典娜专属）—— 这些在 `JDCloud-noWiFi.config` 末尾留了注释留档。
+   网络唤醒沿用 `wolultra`（带定时开机），不换官方 `wol`。
 
 `Scripts/Packages.sh` 除上游原样外，只注释了 natmapt 三件套（配合上面停用）、
-新增了 DDNSTO 与 Docker 两段（含各自的补丁）；
+新增了 DDNSTO、Docker、iStore / QuickStart、eMMC-Health、OAF 五段（含各自的补丁）；
 `Handles.sh` / `Settings.sh` 与上游完全一致，`WRT-CORE.yml` 除第 1 点外也与上游一致。
 
 ## 六、怎么用
@@ -144,3 +160,11 @@ Config/               自定义配置（.config 后缀）
   `JDCloud-noWiFi.config` 里，改配置时别当成冗余删掉。
 - **第三方 Go 包（docker / containerd / runc / compose）会显著拉长编译时间**
   （Go 工具链 + 大仓库编译），亚瑟那条线会比 M2 慢不少，是正常的。
+- **「靠依赖自动带出来」不等于装进固件**。依赖链上的包被 `defconfig` 选中时是 `=m`
+  （只编成包、不进 rootfs 镜像），刷完菜单里看不到 —— iStore 那套和 Docker 那套
+  都必须把用到的每一项显式写成 `=y`，别只写 `luci-app-istorex=y` 就以为完事了。
+- **第三方 Makefile 写的依赖未必真的存在**，apk 体系下解析不了是**直接中断编译**。
+  已踩到三个：`uci-firewall`（dockerd）、`ca-certs`（adguardhome）、`luci-js-deps`（emmc-health）。
+  加新的第三方包前先确认它的 `DEPENDS` 每一项都能在源码树/feeds 里找到。
+- **iStore 商店里的软件来自 istore 在线源**，跟自编译固件不一定匹配，
+  `kmod` 类基本装不上 —— 只当应用层软件入口用。
