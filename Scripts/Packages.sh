@@ -222,6 +222,77 @@ if [ -f "$DOCKER_FEED_PATH/dockerd/Makefile" ]; then
 	fi
 fi
 
+#======================= iStore / QuickStart（只有京东云亚瑟装）=======================
+#成品界面就是 https://<路由>/cgi-bin/luci/admin/quickstart/ 那一页：
+#  QuickStart 仪表盘 / NetworkGuide 网络向导 / NetworkPort 网口配置，
+#  外加 iStoreX 首页和 iStore 商店。
+#★只给亚瑟装：这一批包全部只写在 Config/JDCloud-noWiFi.config，不进 GENERAL.config
+#  （GENERAL 是两台共用的，兆能 M2 一概不装）。
+#  源码这里照拉 —— 没被选中的包不会被编译，M2 那条线不会因此变慢。
+#★为什么不用 UPDATE_PACKAGE 的 pkg 模式逐个拉：
+#  这些包都在 kenzok8/small-package 这个「大杂烩」仓库里（几千个包），整仓 clone 会
+#  污染包树、拖慢 feeds 扫描；pkg 模式一次又只能取一个包、且遇到「仓库名与包目录同名」
+#  还会踩 NetWiz 那个嵌套复制被删的坑。
+#  所以用 sparse-checkout：只把需要的目录拉下来，再各自拷进 ./package/。
+ISTORE_PKGS="luci-app-istorex luci-app-quickstart quickstart luci-app-store luci-lib-taskd taskd luci-lib-xterm luci-app-lucky lucky luci-app-adguardhome adguardhome"
+rm -rf ./istore-src
+git clone --depth=1 --filter=blob:none --sparse --branch main "https://github.com/kenzok8/small-package.git" ./istore-src
+git -C ./istore-src sparse-checkout set $ISTORE_PKGS
+for ISTORE_PKG in $ISTORE_PKGS; do
+	if [ -d "./istore-src/$ISTORE_PKG" ]; then
+		rm -rf "./package/$ISTORE_PKG"
+		cp -R "./istore-src/$ISTORE_PKG" "./package/$ISTORE_PKG"
+		echo "istore: $ISTORE_PKG"
+	else
+		echo "istore: WARNING $ISTORE_PKG not found, skipped"
+	fi
+done
+rm -rf ./istore-src
+
+#★必做补丁 1：quickstart 后端的 DEPENDS 里挂着 +mdadm（软 RAID 阵列）。
+#  家用单盘路由根本用不上，而它会把一整套 kmod-md-* 内核模块拉进固件。
+#  （ZqinKing 把他那份里的 e2fsprogs / parted / smartmontools / smartd / drivedb / mdadm
+#    全去了；我们这边 GENERAL.config 本来就开着 smartmontools 和 drivedb，
+#    e2fsprogs / parted 对有 USB 口的亚瑟也算磁盘工具，留着。
+#    只去掉明确用不上且会拖进一堆内核模块的 mdadm，改动最小。）
+if [ -f ./package/quickstart/Makefile ]; then
+	sed -i 's/[[:space:]]*+mdadm//g' ./package/quickstart/Makefile
+fi
+
+#★必做补丁 2：luci-app-adguardhome 的 DEPENDS 写的是 +ca-certs，
+#  但源码树里根本没有这个包（全树搜过，主干只有 package/system/ca-certificates）——
+#  跟 dockerd 那个 uci-firewall 是同一类坑：apk 体系下依赖解析不了是**直接中断编译**的，
+#  不像 opkg 那样只给个警告。必须改成正确的包名。
+if [ -f ./package/luci-app-adguardhome/Makefile ]; then
+	sed -i 's/+ca-certs\b/+ca-certificates/g' ./package/luci-app-adguardhome/Makefile
+fi
+
+#======================= eMMC 健康（adminchenyu/eMMC-Health）======================
+#亚瑟是 64GB eMMC，看寿命 / 健康度 / Pre-EOL 有意义；M2 是 128MB NAND，用不上
+#  （所以选包那行只写在 Config/JDCloud-noWiFi.config）。
+#★这个仓库根目录本身就是包目录（PKG_NAME 写在根 Makefile 里），
+#  所以整仓 clone 后直接把目录名改成包名 luci-app-emmc-health 即可。
+rm -rf ./package/luci-app-emmc-health
+git clone --depth=1 --single-branch --branch main "https://github.com/adminchenyu/eMMC-Health.git" ./package/luci-app-emmc-health
+
+#★必做补丁：去掉 +luci-js-deps —— immortalwrt 主干里没有这个包（全树搜不到），
+#  留着就是一条解析不了的依赖，apk 阶段必断。
+#  做法与 ZqinKing 的 fix_emmc_health_luci_js_deps 完全一致。
+if [ -f ./package/luci-app-emmc-health/Makefile ]; then
+	sed -i '/^[[:space:]]*DEPENDS:=/ s/[[:space:]]*+luci-js-deps//g' ./package/luci-app-emmc-health/Makefile
+fi
+
+#======================= OAF 应用过滤（destan19/OpenAppFilter）======================
+#三个目录是一套：open-app-filter（用户态服务 appfilter）/ oaf（内核模块）/ luci-app-oaf（界面）。
+#  整仓 clone 到 ./package/OpenAppFilter 下，OpenWrt 会扫到这三个子目录。
+#★风险提示（编译不过就把这整段注释掉，不要硬扛）：
+#  1) oaf 是 out-of-tree 内核模块，跟内核版本强相关 —— 6.18 下有编译失败的可能。
+#  2) IPQ6000 开了 NSS 硬件加速后，流量走硬件转发路径、不过 netfilter 钩子，
+#     功能本身可能失效（跟 SQM 在 NSS 下的处境一样）。
+#  这条线没实机验证过，出问题优先撤这一段。
+#  第 5 个参数是清掉 feeds 里可能存在的同名旧包 —— 上游注释说不清会出现 coremark 报错。
+UPDATE_PACKAGE "OpenAppFilter" "destan19/OpenAppFilter" "master" "" "luci-app-appfilter oaf appfilter"
+
 UPDATE_PACKAGE "airpi3000m-fancontrol" "LianXia233/luci-app-airpi3000m-fancontrol" "main"
 UPDATE_PACKAGE "chfs" "LianXia233/luci-app-chfs" "main"
 UPDATE_PACKAGE "fm350" "LianXia233/luci-app-fm350" "main"
