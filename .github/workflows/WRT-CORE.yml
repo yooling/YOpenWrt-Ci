@@ -227,6 +227,43 @@ jobs:
 
           cp -f ./.config ./upload/Config-"$WRT_CONFIG"-"$WRT_INFO"-"$WRT_BRANCH"-"$WRT_DATE".config
 
+          #TEST 模式下把关键包的选中状态直接打到日志里。
+          #原因：.config 是作为 Artifact 上传的（不在 logs 里），每次都要单独下载太麻烦；
+          #而且第三方包的依赖经常带出的是 =m —— 编成包但不进固件镜像，刷完菜单里根本看不到，
+          #只看「编译成功」是发现不了的。这里直接把值打出来，一眼就能看出是 y / m / 没选上。
+          if [[ "$WRT_TEST" == 'true' ]]; then
+            echo "====================== TEST：关键包选中状态 ======================"
+            for PKG in \
+              dockerd docker containerd runc docker-compose luci-app-dockerman luci-lib-docker \
+              tini nftables-json libseccomp kmod-nf-ipvs kmod-br-netfilter kmod-macvlan iptables-nft \
+              luci-app-istorex luci-app-quickstart quickstart luci-app-store \
+              taskd luci-lib-taskd luci-lib-xterm luci-app-ttyd ttyd \
+              luci-app-lucky lucky luci-app-adguardhome luci-app-emmc-health \
+              luci-app-oaf kmod-oaf appfilter luci-app-sqm sqm-scripts \
+              luci-app-vlmcsd vlmcsd luci-app-quickfile automount \
+              ddnsto luci-app-ddnsto \
+              luci-app-netwiz luci-app-nikki luci-app-easytier luci-app-wolultra ; do
+              VAL=$(grep -m 1 "^CONFIG_PACKAGE_${PKG}=" ./.config | cut -d= -f2- || true)
+              printf "%-26s %s\n" "$PKG" "${VAL:-未选中}"
+            done
+            echo "====================== TEST：内核开关 / 分区大小 ======================"
+            for OPT in \
+              CONFIG_KERNEL_NAMESPACES CONFIG_KERNEL_CGROUPS CONFIG_KERNEL_MEMCG CONFIG_KERNEL_MEMCG_V1 \
+              CONFIG_KERNEL_CPUSETS CONFIG_KERNEL_SECCOMP CONFIG_KERNEL_POSIX_MQUEUE \
+              CONFIG_TARGET_ROOTFS_PARTSIZE CONFIG_TARGET_KERNEL_PARTSIZE ; do
+              VAL=$(grep -m 1 "^${OPT}=" ./.config | cut -d= -f2- || true)
+              if [ -z "$VAL" ]; then
+                if grep -qm 1 "^# ${OPT} is not set" ./.config; then
+                  VAL="n（显式关闭，注意：可能没生效）"
+                else
+                  VAL="未设置"
+                fi
+              fi
+              printf "%-34s %s\n" "$OPT" "$VAL"
+            done
+            echo "================================================================"
+          fi
+
           if [[ "$WRT_TEST" != 'true' ]]; then
             echo "WRT_KVER=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \;)" >> $GITHUB_ENV
             echo "WRT_LIST=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^luci-(app|theme)[^ ]*' {} \; | tr '\n' ' ')" >> $GITHUB_ENV
