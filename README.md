@@ -75,10 +75,10 @@ Config/               自定义配置（.config 后缀）
 3. **`GENERAL.config`** 的插件段按用途分了小类，加新插件时放进对应分类（没有就新建一个）：
    - **科学上网**：关 `luci-app-homeproxy`（不用）；加 `luci-app-nikki` + 中文语言包
      （sing-box 内核，darkrain88 那份同样默认开着，上游 `Packages.sh` 已默认 clone 该源）；
-   - **组网**：加 `luci-app-easytier`（异地组网，打不通自动走中继）；
-     停用 `luci-app-natmapt` 与配套 `stuntman-client`
+   - **组网**：停用 `luci-app-natmapt` 与配套 `stuntman-client`
      —— 本机家宽 NAT3~NAT4、无公网 IPv6，打洞类方案根本打不通；
      **网络向导不写在通用层**（两台各用一套，见下面第 7 点）；
+     **EasyTier 也不在通用层**（只给亚瑟，见下面第 8 点）；
    - **远程访问·内网穿透**：加 **`ddnsto` + `luci-app-ddnsto`**（官方包仓库
      `linkease/ddnsto-openwrt-package`）。和 EasyTier 不冲突：EasyTier 是组网（连上等于人在家里），
      DDNSTO 是单点穿透（把某个网页 / 端口映射到外网，不用装客户端），且走服务端中转、
@@ -91,14 +91,20 @@ Config/               自定义配置（.config 后缀）
 4. **`WRT-TEST.yml`**：下拉框只列本仓库的两份配置 + `TEST`，源码线与正式工作流同一套。
 5. **管理地址按源码线分网段**：OWrt 两条线 `192.168.10.1`、LibWrt `192.168.20.1`
    （两条线的固件在同一网络里不会撞 IP）。
-6. **Docker（只给亚瑟）**：`Config/JDCloud-noWiFi.config` 里选 `luci-app-dockerman` + 中文包 +
-   `docker-compose` + `iptables-nft` + `kmod-macvlan`，源码用 `XiaoHaiSly/luci-app-dockerman`
+6. **Docker（只给亚瑟）**：源码用 `XiaoHaiSly/luci-app-dockerman`
    （整套版本由作者仓库每天自动跟 moby 发版同步，不用自己追）。
+   `Config/JDCloud-noWiFi.config` 里**整套每一项都显式写了 `=y`**：
+   `dockerd` / `docker` / `containerd` / `runc` / `luci-lib-docker` / `tini` / `nftables-json` /
+   `luci-app-dockerman` + 中文包 / `docker-compose` / `iptables-nft` / `kmod-macvlan` ——
+   **只写 `luci-app-dockerman=y` 是不够的**，原因见第七节「靠依赖自动带出来」那条。
    配套改了三样，`Packages.sh` 里都有「必做」注释：
    - **内核开关**：`CONFIG_KERNEL_NAMESPACES / CGROUPS / MEMCG / SECCOMP / POSIX_MQUEUE …` 一大组。
      上游 `target/linux/generic/config-6.18` 里这些默认全是 `is not set`，不开容器起不来；
-   - **`CONFIG_TARGET_ROOTFS_PARTSIZE=512`**：默认 rootfs 分区只有 104MB，装不下 docker，
-     打包时 `pad-rootfs` 会直接报「rootfs 太大」中断编译；亚瑟是 64GB eMMC，给 512MB 很宽裕；
+   - ~~`CONFIG_TARGET_ROOTFS_PARTSIZE=512`~~ **已注释掉，因为这行在亚瑟身上根本不生效**：
+     TEST 实证生成的 `.config` 里这个符号**完全不存在**。原因是它在 `Config-images.in` 里写着
+     `depends on USES_ROOTFS_PART || TARGET_ROOTFS_EXT4FS`，而亚瑟是 EmmcImage（squashfs + eMMC），
+     两个条件都不满足 → 符号不可见，写了也白写。对 64GB eMMC 本来也不需要它
+     （按分区表直接写入，没有那个小分区限制）。留成注释备用，详见第七节；
    - **三个补丁**：① `runc` 的 `include ../../lang/golang/...` 相对路径改绝对路径（它原本只在
      `feeds/packages/utils/` 下成立）；② `docker` CLI 校验 commit 时的
      `$(CURDIR)/../dockerd/git-short-commit.sh` 改绝对路径；③ 删掉 `dockerd` 对 `uci-firewall`
@@ -118,7 +124,12 @@ Config/               自定义配置（.config 后缀）
    `luci-app-quickstart` + `luci-app-store` + `luci-lib-taskd` ——
    但**依赖带出来的是 `=m`（编成包、不进固件镜像），刷完菜单里看不到**，
    所以 `JDCloud-noWiFi.config` 里把每一个要用的包都显式写成了 `=y`。
-   配套还有 `lucky` / `adguardhome` / `emmc-health` / `oaf` / `sqm` / `vlmcsd` / `quickfile`。
+   同理，`ttyd`（网页终端主程序，界面是 `luci-app-ttyd`）、`sqm-scripts`（SQM 真正的限速脚本）
+   也各自单独写了 `=y`；`quickstart` 后端 DEPENDS 里那批命令行工具
+   （`bash` / `block-mount` / `mount-utils` / `e2fsprogs` / `parted` / `smartd` /
+   `shadow-utils` / `shadow-useradd`）一并钉成 `=y` —— 缺了它们向导页会在运行时报错。
+   配套还有 `lucky` / `adguardhome` / `emmc-health` / `sqm` / `vlmcsd` / `quickfile`
+   （`oaf` 已停用，理由见第七节）。
    三个必打补丁（理由都写在 `Packages.sh` 里）：
    - `quickstart` 去掉 `+mdadm`（软 RAID，用不上还会拖进一堆 `kmod-md-*` 内核模块）；
    - `luci-app-adguardhome` 的 `+ca-certs` 改成 `+ca-certificates`（前者源码树里根本没有）；
@@ -126,10 +137,28 @@ Config/               自定义配置（.config 后缀）
    **明确剔除**：`passwall` / `mosdns` / `smartdns` / `cups` 打印 / `pbr` 策略路由 /
    `athena-led`（京东云雅典娜专属）—— 这些在 `JDCloud-noWiFi.config` 末尾留了注释留档。
    网络唤醒沿用 `wolultra`（带定时开机），不换官方 `wol`。
+8. **EasyTier（只给亚瑟）**：`luci-app-easytier` + `luci-i18n-easytier-zh-cn` + **`easytier`（主程序）**
+   三行都写在 `JDCloud-noWiFi.config` 的「组网」段。
+   ★**主程序必须单独显式写 `=y`**：`luci-app-easytier` 的 `LUCI_DEPENDS` 只有
+   `+kmod-tun +luci-compat` —— **压根没依赖主程序**。只写界面那行的话，编出来是
+   「菜单在、`easytier-core` 不在」，点了完全没用（2026-10-17 的 TEST 已实证：
+   `CONFIG_PACKAGE_easytier` 是 `is not set`，界面却是 `y`）。
+   ★**不给 M2 的原因**：主程序是 Rust 写的二进制，且 Makefile 里 `RSTRIP:=:` 明确禁止 strip
+   —— 压缩包 10~24MB，解压后 40~70MB，M2 只有 128MB NAND 装不下；亚瑟 64GB eMMC 无所谓。
+9. **`WRT-CORE.yml`：TEST 模式下把关键包的选中状态直接打到日志里**（新增在「Package Firmware」步骤）。
+   原因：`.config` 是当 Artifact 上传的、不在 logs 里，每次单独下载太麻烦；
+   而且第三方包靠依赖带出来的经常是 `=m`（编成包但不进固件镜像，刷完菜单里看不到），
+   光看「编译成功」发现不了。现在跑完 TEST 直接在日志里就能看到每一项是 `y` / `m` / 没选上，
+   顺带打印那组 docker 内核开关和 `ROOTFS_PARTSIZE` 有没有真的生效。
+   输出会**区分两种「没选上」**，这点很关键：`n（包在但没选上 —— 显式写 =y 可救）` 指的是
+   `.config` 里有 `# CONFIG_PACKAGE_xxx is not set`，包在源码树里、只是没选中；
+   `符号不存在（源没拉到 / 包名写错）` 指的是 kconfig 压根不认这个符号。
+   前者补一行 `=y` 就好，后者要回头查源有没有拉到。EasyTier 的坑正是靠这个区分抓出来的。
 
 `Scripts/Packages.sh` 除上游原样外，只注释了 natmapt 三件套（配合上面停用）、
-新增了 DDNSTO、Docker、iStore / QuickStart、eMMC-Health、OAF 五段（含各自的补丁）；
-`Handles.sh` / `Settings.sh` 与上游完全一致，`WRT-CORE.yml` 除第 1 点外也与上游一致。
+新增了 DDNSTO、Docker、iStore / QuickStart、eMMC-Health 四段（含各自的补丁）；
+OAF 那段写了又停用了（理由见第七节），同样以注释形式保留。
+`Handles.sh` / `Settings.sh` 与上游完全一致，`WRT-CORE.yml` 除了第 1、9 点外也与上游一致。
 
 ## 六、怎么用
 
@@ -155,9 +184,9 @@ Config/               自定义配置（.config 后缀）
   kmod-fs-ext4、automount …），把配置行**注释掉**等于用 target 的默认值，包照样进固件。
 - **设备列表只列自己那台**。列了就会一起编进固件包，体积和编译时间都翻倍。
 - **别往 `GENERAL.config` 加只有一台机器要的包**，理由见第四节第 2 条。
-- **Docker 的两条连带项不能省**：只写 `luci-app-dockerman=y` 而不开那组 `CONFIG_KERNEL_*`，
-  容器起不来；不调 `CONFIG_TARGET_ROOTFS_PARTSIZE`，打包阶段就断。两者都写在
-  `JDCloud-noWiFi.config` 里，改配置时别当成冗余删掉。
+- **Docker 的内核开关不能省**：只写 `luci-app-dockerman=y` 而不开那组 `CONFIG_KERNEL_*`，
+  容器起不来。开关都写在 `JDCloud-noWiFi.config` 里，改配置时别当成冗余删掉。
+  （`CONFIG_TARGET_ROOTFS_PARTSIZE` 不算连带项 —— 它在亚瑟身上压根不生效，见下一条。）
 - **第三方 Go 包（docker / containerd / runc / compose）会显著拉长编译时间**
   （Go 工具链 + 大仓库编译），亚瑟那条线会比 M2 慢不少，是正常的。
 - **「靠依赖自动带出来」不等于装进固件**。依赖链上的包被 `defconfig` 选中时是 `=m`
@@ -168,3 +197,26 @@ Config/               自定义配置（.config 后缀）
   加新的第三方包前先确认它的 `DEPENDS` 每一项都能在源码树/feeds 里找到。
 - **iStore 商店里的软件来自 istore 在线源**，跟自编译固件不一定匹配，
   `kmod` 类基本装不上 —— 只当应用层软件入口用。
+- **TEST 只做 `make defconfig`，不编译**。它能验证「包有没有被选中、内核符号有没有效、
+  第三方 Makefile 的依赖能不能解析」，但**验证不了**：① out-of-tree 内核模块在这些内核下
+  能否编译过；② `lucky` / `easytier` 那种在 `Build/Prepare` 里 `wget` 拉二进制的包能不能下到
+  （TEST 阶段根本不执行，正式编译才会去 GitHub 拉）。三条 TEST 全过 ≠ 正式编译一定过。
+- **判断补丁有没有生效，看 defconfig 的 WARNING 列表**。第三方 Makefile 写了不存在的依赖，
+  `make defconfig` 一定会打印 `WARNING: Makefile '…' has a dependency on 'xxx', which does not exist`。
+  2026-10-17 首轮 TEST（ZNM2 × OWrt-NSS / LibWrt）日志里没有 `ca-certs` / `luci-js-deps` /
+  `uci-firewall` 的警告 → 那三个补丁确认生效。这是最快的验证办法。
+- **OAF 已停用**（`destan19/OpenAppFilter`）。原因是三条叠加，最后一条是决定性的：
+  ① defconfig 报 `symbol PACKAGE_kmod-oaf is selected by PACKAGE_kmod-oaf` 递归依赖；
+  ② kconfig 把这条判为 broken 后不再传播 select，生成的 `.config` 里
+  `CONFIG_PACKAGE_kmod-oaf` 就是 `is not set` —— **界面在、内核模块不在，功能必然残废**
+  （2026-10-17 TEST 实证）；③ 就算装上，NSS 加速下流量不过 netfilter 钩子，功能本身也失效。
+  `Packages.sh` 与 `JDCloud-noWiFi.config` 里都以注释形式保留，取消注释即可恢复。
+- **写了 `=y` 的符号也可能被 defconfig 静默丢掉** —— 证据就是 `CONFIG_TARGET_ROOTFS_PARTSIZE`：
+  它在 `Config-images.in` 里 `depends on USES_ROOTFS_PART || TARGET_ROOTFS_EXT4FS`，
+  亚瑟是 EmmcImage，两个条件都不满足 → 符号不可见，写了不报错也不生效。
+  所以「配置里写了」和「真的生效了」是两回事，**必须用 TEST 的诊断输出核对**。
+- **别默认「界面包会带出主程序」**。OpenWrt 的 `DEPENDS` 在 Kconfig 里生成的是 `depends on`
+  而不是 `select`，而 `depends on` 只保证下限（把你提到 `=m` 就算满足）。
+  更要命的是有些界面包压根没写主程序依赖 —— `luci-app-easytier` 的 `LUCI_DEPENDS`
+  只有 `+kmod-tun +luci-compat`，所以主程序 `easytier` 必须单独显式写 `=y`。
+  **凡是「界面 + 主程序」结构的插件，两行都要写。**
