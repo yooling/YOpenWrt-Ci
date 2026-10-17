@@ -239,12 +239,23 @@ jobs:
               luci-app-istorex luci-app-quickstart quickstart luci-app-store \
               taskd luci-lib-taskd luci-lib-xterm luci-app-ttyd ttyd \
               luci-app-lucky lucky luci-app-adguardhome luci-app-emmc-health \
-              luci-app-oaf kmod-oaf appfilter luci-app-sqm sqm-scripts \
+              luci-app-sqm sqm-scripts \
               luci-app-vlmcsd vlmcsd luci-app-quickfile automount \
               ddnsto luci-app-ddnsto \
-              luci-app-netwiz luci-app-nikki luci-app-easytier luci-app-wolultra ; do
+              bash block-mount mount-utils e2fsprogs parted smartd shadow-utils shadow-useradd \
+              luci-app-netwiz luci-app-nikki luci-app-easytier easytier luci-app-wolultra ; do
               VAL=$(grep -m 1 "^CONFIG_PACKAGE_${PKG}=" ./.config | cut -d= -f2- || true)
-              printf "%-26s %s\n" "$PKG" "${VAL:-未选中}"
+              #★必须区分这两种「没选上」，含义完全不同：
+              #  is not set  —— 包在源码树里、kconfig 认得它，只是没被选中（写 =y 就能救）
+              #  符号不存在  —— 包压根不在源码树里（源没拉到 / 包名写错 / 依赖条件不满足）
+              if [ -z "$VAL" ]; then
+                if grep -qm 1 "^# CONFIG_PACKAGE_${PKG} is not set" ./.config; then
+                  VAL="n（包在但没选上 —— 显式写 =y 可救）"
+                else
+                  VAL="符号不存在（源没拉到 / 包名写错）"
+                fi
+              fi
+              printf "%-26s %s\n" "$PKG" "$VAL"
             done
             echo "====================== TEST：内核开关 / 分区大小 ======================"
             for OPT in \
@@ -254,9 +265,9 @@ jobs:
               VAL=$(grep -m 1 "^${OPT}=" ./.config | cut -d= -f2- || true)
               if [ -z "$VAL" ]; then
                 if grep -qm 1 "^# ${OPT} is not set" ./.config; then
-                  VAL="n（显式关闭，注意：可能没生效）"
+                  VAL="n（写了却没生效 —— 被依赖或默认值压回去了）"
                 else
-                  VAL="未设置"
+                  VAL="符号不存在（该 target 不适用，写了也白写）"
                 fi
               fi
               printf "%-34s %s\n" "$OPT" "$VAL"
