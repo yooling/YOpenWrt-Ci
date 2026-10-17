@@ -282,16 +282,21 @@ if [ -f ./package/luci-app-emmc-health/Makefile ]; then
 	sed -i '/^[[:space:]]*DEPENDS:=/ s/[[:space:]]*+luci-js-deps//g' ./package/luci-app-emmc-health/Makefile
 fi
 
-#======================= OAF 应用过滤（destan19/OpenAppFilter）======================
-#三个目录是一套：open-app-filter（用户态服务 appfilter）/ oaf（内核模块）/ luci-app-oaf（界面）。
-#  整仓 clone 到 ./package/OpenAppFilter 下，OpenWrt 会扫到这三个子目录。
-#★风险提示（编译不过就把这整段注释掉，不要硬扛）：
-#  1) oaf 是 out-of-tree 内核模块，跟内核版本强相关 —— 6.18 下有编译失败的可能。
-#  2) IPQ6000 开了 NSS 硬件加速后，流量走硬件转发路径、不过 netfilter 钩子，
-#     功能本身可能失效（跟 SQM 在 NSS 下的处境一样）。
-#  这条线没实机验证过，出问题优先撤这一段。
+#======================= OAF 应用过滤（destan19/OpenAppFilter）★已停用 =======================
+#停用原因（2026-10-17 TEST 实证，三条）：
+#  1) 内核模块根本选不上：defconfig 报
+#         error: recursive dependency detected!
+#           symbol PACKAGE_kmod-oaf is selected by PACKAGE_kmod-oaf
+#     kconfig 判为 broken 后不再传播 select，生成的 .config 里
+#     CONFIG_PACKAGE_kmod-oaf 就是 "is not set" —— 界面在、模块不在，功能必然残废。
+#  2) oaf 是 out-of-tree 内核模块，跟内核版本强相关，6.18 / 6.12 都有编不过的风险。
+#  3) IPQ6000 开了 NSS 硬件加速后，流量走硬件转发路径、不过 netfilter 钩子，
+#     就算装上了功能本身也失效（跟 SQM 在 NSS 下的处境一样）。
+#★恢复方法：取消下面这行的注释，同时取消 Config/JDCloud-noWiFi.config 里
+#  luci-app-oaf / luci-i18n-oaf-zh-cn / appfilter 三行的注释 —— 两处必须一起改，
+#  否则选中一个源码树里不存在的包，apk 阶段会直接中断编译。
 #  第 5 个参数是清掉 feeds 里可能存在的同名旧包 —— 上游注释说不清会出现 coremark 报错。
-UPDATE_PACKAGE "OpenAppFilter" "destan19/OpenAppFilter" "master" "" "luci-app-appfilter oaf appfilter"
+#UPDATE_PACKAGE "OpenAppFilter" "destan19/OpenAppFilter" "master" "" "luci-app-appfilter oaf appfilter"
 
 UPDATE_PACKAGE "airpi3000m-fancontrol" "LianXia233/luci-app-airpi3000m-fancontrol" "main"
 UPDATE_PACKAGE "chfs" "LianXia233/luci-app-chfs" "main"
