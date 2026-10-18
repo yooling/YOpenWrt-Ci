@@ -71,7 +71,15 @@ UPDATE_PACKAGE "diskman" "sbwml/luci-app-diskman" "main"
 UPDATE_PACKAGE "mosdns" "sbwml/luci-app-mosdns" "v5" "" "v2dat"
 UPDATE_PACKAGE "openlist2" "sbwml/luci-app-openlist2" "main"
 UPDATE_PACKAGE "qbittorrent" "sbwml/luci-app-qbittorrent" "master" "" "qt6base qt6tools rblibtorrent"
-UPDATE_PACKAGE "quickfile" "sbwml/luci-app-quickfile" "main"
+#UPDATE_PACKAGE "quickfile" "sbwml/luci-app-quickfile" "main"
+#★2026-10-18 禁用：quickfile 是「后台弹 https 不安全提示」的元凶。
+#    luci-app-quickfile 的 LUCI_DEPENDS:=+luci-nginx +quickfile
+#      → nginx + nginx-util + uwsgi（连带 python3 glib2 libffi libical libmaxminddb
+#        libxslt sqlite3 bluez）→ nginx 的 LuCI 站点默认 443 + 自签证书 + 80 跳 443。
+#  去掉它之后 LuCI 回落到 uhttpd，恢复成 16 日版那种直接 http 访问、无证书警告的状态。
+#★恢复方法：取消本行注释，并同步打开 Config/JDCloud-noWiFi.config 里的
+#    CONFIG_PACKAGE_luci-app-quickfile=y；若要保留 quickfile 又不想有 https 提示，
+#    需要另外覆盖 nginx 的 LuCI 站点模板（去掉 443 监听与 80→443 跳转）。
 
 UPDATE_PACKAGE "ddns-go" "sirpdboy/luci-app-ddns-go" "main"
 UPDATE_PACKAGE "netspeedtest" "sirpdboy/netspeedtest" "main" "" "homebox ookla-speedtest"
