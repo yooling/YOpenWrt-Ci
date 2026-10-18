@@ -231,16 +231,21 @@ jobs:
           #原因：.config 是作为 Artifact 上传的（不在 logs 里），每次都要单独下载太麻烦；
           #而且第三方包的依赖经常带出的是 =m —— 编成包但不进固件镜像，刷完菜单里根本看不到，
           #只看「编译成功」是发现不了的。这里直接把值打出来，一眼就能看出是 y / m / 没选上。
+          #★清单末尾的 uhttpd / nginx / nginx-util / luci-nginx / uwsgi 是「期望值校验」：
+          #  2026-10-18 去掉 quickfile 之后，nginx 那一串不该再出现（期望 is not set / 符号不存在），
+          #  uhttpd 应该是 y。看到 nginx=y 就说明又有别的包把它拉回来了，得去查依赖。
           if [[ "$WRT_TEST" == 'true' ]]; then
             echo "====================== TEST：关键包选中状态 ======================"
             for PKG in \
               dockerd docker containerd runc docker-compose luci-app-dockerman luci-lib-docker \
               tini nftables-json libseccomp kmod-nf-ipvs kmod-br-netfilter kmod-macvlan iptables-nft \
+              ca-certificates uci-firewall fuse-overlayfs kmod-veth kmod-nf-nat \
               luci-app-istorex luci-app-quickstart quickstart luci-app-store \
               taskd luci-lib-taskd luci-lib-xterm luci-app-ttyd ttyd \
               luci-app-lucky lucky luci-app-adguardhome luci-app-emmc-health \
               luci-app-sqm sqm-scripts \
-              luci-app-vlmcsd vlmcsd luci-app-quickfile automount \
+              luci-app-vlmcsd vlmcsd automount \
+              uhttpd nginx nginx-util luci-nginx uwsgi \
               ddnsto luci-app-ddnsto \
               bash block-mount mount-utils e2fsprogs parted smartd shadow-utils shadow-useradd \
               luci-app-netwiz luci-app-nikki luci-app-easytier easytier luci-app-wolultra ; do
