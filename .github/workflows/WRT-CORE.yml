@@ -227,28 +227,24 @@ jobs:
 
           cp -f ./.config ./upload/Config-"$WRT_CONFIG"-"$WRT_INFO"-"$WRT_BRANCH"-"$WRT_DATE".config
 
-          #TEST 模式下把关键包的选中状态直接打到日志里。
-          #原因：.config 是作为 Artifact 上传的（不在 logs 里），每次都要单独下载太麻烦；
-          #而且第三方包的依赖经常带出的是 =m —— 编成包但不进固件镜像，刷完菜单里根本看不到，
-          #只看「编译成功」是发现不了的。这里直接把值打出来，一眼就能看出是 y / m / 没选上。
-          #★清单末尾的 uhttpd / nginx / nginx-util / luci-nginx / uwsgi 是「期望值校验」：
-          #  2026-10-18 去掉 quickfile 之后，nginx 那一串不该再出现（期望 is not set / 符号不存在），
-          #  uhttpd 应该是 y。看到 nginx=y 就说明又有别的包把它拉回来了，得去查依赖。
+          #TEST 模式下把关键包的选中状态直接打到日志里 —— 第三方包的依赖经常只带出 =m
+          #（编成包但不进固件镜像），只看「编译成功」发现不了，这里直接把 y / m / 没选上打出来。
+          #★末尾的 uhttpd / nginx* 是期望值校验：uhttpd 应为 y，nginx 那串不该出现。
           if [[ "$WRT_TEST" == 'true' ]]; then
             echo "====================== TEST：关键包选中状态 ======================"
             for PKG in \
               dockerd docker containerd runc docker-compose luci-app-dockerman luci-lib-docker \
               tini nftables-json libseccomp kmod-nf-ipvs kmod-br-netfilter kmod-macvlan iptables-nft \
-              ca-certificates uci-firewall fuse-overlayfs kmod-veth kmod-nf-nat \
-              luci-app-istorex luci-app-quickstart quickstart luci-app-store \
-              taskd luci-lib-taskd luci-lib-xterm luci-app-ttyd ttyd \
+              ca-certificates fuse-overlayfs kmod-veth kmod-nf-nat \
               luci-app-lucky lucky luci-app-adguardhome luci-app-emmc-health \
-              luci-app-sqm sqm-scripts \
               luci-app-vlmcsd vlmcsd automount \
-              uhttpd nginx nginx-util luci-nginx uwsgi \
+              block-mount e2fsprogs parted kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat \
+              luci-app-upnp miniupnpd \
               ddnsto luci-app-ddnsto \
-              bash block-mount mount-utils e2fsprogs parted smartd shadow-utils shadow-useradd \
-              luci-app-netwiz luci-app-nikki luci-app-easytier easytier luci-app-wolultra ; do
+              luci-app-netwiz luci-app-nikki ca-bundle yq mihomo-meta \
+              luci-app-easytier easytier luci-app-wolultra \
+              zram-swap kmod-zram kmod-lib-lz4 \
+              uhttpd nginx nginx-util luci-nginx uwsgi ; do
               VAL=$(grep -m 1 "^CONFIG_PACKAGE_${PKG}=" ./.config | cut -d= -f2- || true)
               #★必须区分这两种「没选上」，含义完全不同：
               #  is not set  —— 包在源码树里、kconfig 认得它，只是没被选中（写 =y 就能救）
