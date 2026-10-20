@@ -71,30 +71,12 @@ UPDATE_PACKAGE "diskman" "sbwml/luci-app-diskman" "main"
 UPDATE_PACKAGE "mosdns" "sbwml/luci-app-mosdns" "v5" "" "v2dat"
 UPDATE_PACKAGE "openlist2" "sbwml/luci-app-openlist2" "main"
 UPDATE_PACKAGE "qbittorrent" "sbwml/luci-app-qbittorrent" "master" "" "qt6base qt6tools rblibtorrent"
-#UPDATE_PACKAGE "quickfile" "sbwml/luci-app-quickfile" "main"
-#★2026-10-18 禁用：quickfile 是「后台弹 https 不安全提示」的元凶。
-#    luci-app-quickfile 的 LUCI_DEPENDS:=+luci-nginx +quickfile
-#      → nginx + nginx-util + uwsgi（连带 python3 glib2 libffi libical libmaxminddb
-#        libxslt sqlite3 bluez）→ nginx 的 LuCI 站点默认 443 + 自签证书 + 80 跳 443。
-#  去掉它之后 LuCI 回落到 uhttpd，恢复成 16 日版那种直接 http 访问、无证书警告的状态。
-#★恢复方法：取消本行注释，并同步打开 Config/JDCloud-noWiFi.config 里的
-#    CONFIG_PACKAGE_luci-app-quickfile=y；若要保留 quickfile 又不想有 https 提示，
-#    需要另外覆盖 nginx 的 LuCI 站点模板（去掉 443 监听与 80→443 跳转）。
-
 UPDATE_PACKAGE "ddns-go" "sirpdboy/luci-app-ddns-go" "main"
 UPDATE_PACKAGE "netspeedtest" "sirpdboy/netspeedtest" "main" "" "homebox ookla-speedtest"
-#netwizard（sirpdboy）：已换成 NetWiz（huchd0）—— 刷入后确认要的是后者，详见下面那段。
-#UPDATE_PACKAGE "netwizard" "sirpdboy/luci-app-netwizard" "main"
 UPDATE_PACKAGE "partexp" "sirpdboy/luci-app-partexp" "main"
 UPDATE_PACKAGE "timecontrol" "sirpdboy/luci-app-timecontrol" "main"
 
 #======================= NetWiz（huchd0/luci-app-netwiz）=======================
-#网络设置向导 —— 就是「NetWiz」，不是 sirpdboy 那个 netwizard（上面那行已注释）。
-#★为什么不用 UPDATE_PACKAGE 的 pkg 模式：这个仓库的**仓库名与里面的包目录同名**
-#  （都叫 luci-app-netwiz）。pkg 模式会 cp ./package/luci-app-netwiz/luci-app-netwiz
-#  到 ./package/ —— 但 ./package/luci-app-netwiz 正是刚 clone 出来的仓库根（目录已存在），
-#  于是复制成嵌套子目录，紧接着的 "rm -rf $REPO_PATH" 又把刚拷进去的内容一起删掉，
-#  包直接消失。所以这里手动 clone 到临时目录 → 挪出包目录 → 删临时目录。
 rm -rf ./package/luci-app-netwiz ./package/netwiz-src
 git clone --depth=1 --single-branch --branch master "https://github.com/huchd0/luci-app-netwiz.git" ./package/netwiz-src
 mv -f ./package/netwiz-src/luci-app-netwiz ./package/luci-app-netwiz
@@ -230,47 +212,29 @@ if [ -f "$DOCKER_FEED_PATH/dockerd/Makefile" ]; then
 	fi
 fi
 
-#======================= iStore / QuickStart（只有京东云亚瑟装）=======================
-#成品界面就是 https://<路由>/cgi-bin/luci/admin/quickstart/ 那一页：
-#  QuickStart 仪表盘 / NetworkGuide 网络向导 / NetworkPort 网口配置，
-#  外加 iStoreX 首页和 iStore 商店。
-#★只给亚瑟装：这一批包全部只写在 Config/JDCloud-noWiFi.config，不进 GENERAL.config
-#  （GENERAL 是两台共用的，兆能 M2 一概不装）。
-#  源码这里照拉 —— 没被选中的包不会被编译，M2 那条线不会因此变慢。
-#★为什么不用 UPDATE_PACKAGE 的 pkg 模式逐个拉：
-#  这些包都在 kenzok8/small-package 这个「大杂烩」仓库里（几千个包），整仓 clone 会
-#  污染包树、拖慢 feeds 扫描；pkg 模式一次又只能取一个包、且遇到「仓库名与包目录同名」
-#  还会踩 NetWiz 那个嵌套复制被删的坑。
-#  所以用 sparse-checkout：只把需要的目录拉下来，再各自拷进 ./package/。
-ISTORE_PKGS="luci-app-istorex luci-app-quickstart quickstart luci-app-store luci-lib-taskd taskd luci-lib-xterm luci-app-lucky lucky luci-app-adguardhome adguardhome"
-rm -rf ./istore-src
-git clone --depth=1 --filter=blob:none --sparse --branch main "https://github.com/kenzok8/small-package.git" ./istore-src
-git -C ./istore-src sparse-checkout set $ISTORE_PKGS
-for ISTORE_PKG in $ISTORE_PKGS; do
-	if [ -d "./istore-src/$ISTORE_PKG" ]; then
-		rm -rf "./package/$ISTORE_PKG"
-		cp -R "./istore-src/$ISTORE_PKG" "./package/$ISTORE_PKG"
-		echo "istore: $ISTORE_PKG"
+#======================= Lucky / AdGuardHome（kenzok8/small-package）=======================
+#2026-10-20：iStore / QuickStart 那批（istorex、quickstart、store、taskd、xterm、ttyd）
+#  已停用，这里只保留还在用的 lucky 和 adguardhome 四个目录。
+#★用 sparse-checkout：这个仓库是几千个包的大杂烩，整仓 clone 会污染包树、拖慢 feeds 扫描；
+#  pkg 模式一次只能取一个包，且遇「仓库名与包目录同名」会踩 NetWiz 那个嵌套复制被删的坑。
+SMALL_PKGS="luci-app-lucky lucky luci-app-adguardhome adguardhome"
+rm -rf ./small-src
+git clone --depth=1 --filter=blob:none --sparse --branch main "https://github.com/kenzok8/small-package.git" ./small-src
+git -C ./small-src sparse-checkout set $SMALL_PKGS
+for SMALL_PKG in $SMALL_PKGS; do
+	if [ -d "./small-src/$SMALL_PKG" ]; then
+		rm -rf "./package/$SMALL_PKG"
+		cp -R "./small-src/$SMALL_PKG" "./package/$SMALL_PKG"
+		echo "small-package: $SMALL_PKG"
 	else
-		echo "istore: WARNING $ISTORE_PKG not found, skipped"
+		echo "small-package: WARNING $SMALL_PKG not found, skipped"
 	fi
 done
-rm -rf ./istore-src
+rm -rf ./small-src
 
-#★必做补丁 1：quickstart 后端的 DEPENDS 里挂着 +mdadm（软 RAID 阵列）。
-#  家用单盘路由根本用不上，而它会把一整套 kmod-md-* 内核模块拉进固件。
-#  （ZqinKing 把他那份里的 e2fsprogs / parted / smartmontools / smartd / drivedb / mdadm
-#    全去了；我们这边 GENERAL.config 本来就开着 smartmontools 和 drivedb，
-#    e2fsprogs / parted 对有 USB 口的亚瑟也算磁盘工具，留着。
-#    只去掉明确用不上且会拖进一堆内核模块的 mdadm，改动最小。）
-if [ -f ./package/quickstart/Makefile ]; then
-	sed -i 's/[[:space:]]*+mdadm//g' ./package/quickstart/Makefile
-fi
-
-#★必做补丁 2：luci-app-adguardhome 的 DEPENDS 写的是 +ca-certs，
-#  但源码树里根本没有这个包（全树搜过，主干只有 package/system/ca-certificates）——
-#  跟 dockerd 那个 uci-firewall 是同一类坑：apk 体系下依赖解析不了是**直接中断编译**的，
-#  不像 opkg 那样只给个警告。必须改成正确的包名。
+#★必做补丁：luci-app-adguardhome 的 DEPENDS 写的是 +ca-certs，源码树里没这个包
+#  （只有 package/system/ca-certificates）。跟 dockerd 的 uci-firewall 同一类坑：
+#  apk 体系下依赖解析不了是**直接中断编译**的，不像 opkg 那样只给警告。
 if [ -f ./package/luci-app-adguardhome/Makefile ]; then
 	sed -i 's/+ca-certs\b/+ca-certificates/g' ./package/luci-app-adguardhome/Makefile
 fi
