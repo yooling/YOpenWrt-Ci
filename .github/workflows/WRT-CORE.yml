@@ -236,14 +236,15 @@ jobs:
               dockerd docker containerd runc docker-compose luci-app-dockerman luci-lib-docker \
               tini nftables-json libseccomp kmod-nf-ipvs kmod-br-netfilter kmod-macvlan iptables-nft \
               ca-certificates fuse-overlayfs kmod-veth kmod-nf-nat \
-              luci-app-lucky lucky luci-app-adguardhome luci-app-emmc-health \
-              luci-app-vlmcsd vlmcsd automount \
+              luci-app-lucky lucky luci-app-adguardhome adguardhome luci-app-emmc-health \
+              luci-app-vlmcsd vlmcsd \
               block-mount e2fsprogs parted kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat \
               luci-app-upnp miniupnpd \
               ddnsto luci-app-ddnsto \
               luci-app-netwiz luci-app-nikki ca-bundle yq mihomo-meta \
               luci-app-easytier easytier luci-app-wolultra \
               zram-swap kmod-zram kmod-lib-lz4 \
+              cpufreq luci-app-cpufreq wpad-openssl hostapd-common automount kmod-usb3 nand-utils \
               uhttpd nginx nginx-util luci-nginx uwsgi ; do
               VAL=$(grep -m 1 "^CONFIG_PACKAGE_${PKG}=" ./.config | cut -d= -f2- || true)
               #★必须区分这两种「没选上」，含义完全不同：
@@ -293,6 +294,19 @@ jobs:
             done
 
             find ./bin/targets/ -type f -exec mv -f {} ./upload/ \;
+
+            #★=m 的包（adguardhome / lucky / vlmcsd / easytier）产出在 ./bin/packages，
+            #  不进固件镜像；Release 只收 ./wrt/upload，不拷出来就等于白编。这里挑出来一起发布，
+            #  刷完按需 apk add 即可（依赖同是 =m，离线装要连依赖的 apk 一起装）。
+            if [ -d ./bin/packages ]; then
+              find ./bin/packages -type f \
+                \( -name "adguardhome*.apk" -o -name "luci-app-adguardhome*.apk" \
+                   -o -name "lucky*.apk" -o -name "luci-app-lucky*.apk" -o -name "luci-i18n-lucky*.apk" \
+                   -o -name "vlmcsd*.apk" -o -name "luci-app-vlmcsd*.apk" -o -name "luci-i18n-vlmcsd*.apk" \
+                   -o -name "easytier*.apk" -o -name "luci-app-easytier*.apk" -o -name "luci-i18n-easytier*.apk" \) \
+                -exec cp -f {} ./upload/ \;
+              ls -lh ./upload/ | grep -i apk || echo "（本次没有产出 =m 的 apk）"
+            fi
 
             make clean -j$(nproc)
           fi
