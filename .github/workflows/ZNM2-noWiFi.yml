@@ -69,6 +69,7 @@ jobs:
       WRT_BRANCH: ${{inputs.SOURCE == 'LibWrt' && '25.12-nss' || (inputs.SOURCE == 'OWrt-PPE' && 'owrt' || 'main')}}
       #源码名称
       WRT_SOURCE: ${{inputs.SOURCE == 'LibWrt' && 'LiBwrt/LibWrt' || 'VIKINGYFY/immortalwrt'}}
+      #无线标识不用传：WRT-CORE 按配置名判断（ZNM2-noWiFi → noWiFi），改配置名即可
       #插件调整
       WRT_PACKAGE: ${{inputs.PACKAGE}}
       #仅输出配置文件
