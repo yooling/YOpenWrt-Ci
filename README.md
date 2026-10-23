@@ -65,3 +65,27 @@ Config/               自定义配置（.config 后缀）
   （在对应工作流的 `WRT_IP` 里改）
 - 默认密码：空（首次登录时设置）
 - 主机名 / 主题：`OWrt`（或 `LibWrt`，随源码线）/ `argon`
+
+## 六、几条规则（都是踩过坑的，别改回去）
+
+- **关包必须显式写 `=n`**。`target/linux/qualcommax/Makefile` 的 `DEFAULT_PACKAGES` 自带
+  `autocore automount cpufreq e2fsprogs f2fs-tools losetup luci uboot-envtools wpad-openssl`
+  （LibWrt 那条线还额外带 **`luci-app-cpufreq`**）。把配置行**注释掉**等于回落到 target 默认值，
+  包照样进固件 —— 10-20 实测：`cpufreq=y` 注释掉后，M2 的 LibWrt 固件里 cpufreq 依然在。
+  现在 `cpufreq` / `luci-app-cpufreq` 在通用层 `=n`，`wpad-openssl` / `hostapd-common`
+  在两份 noWiFi 配置里 `=n`，别再改回注释。
+- **只要有一台机器不要的包就不能留在 `GENERAL.config`**（它的 `=y` 会覆盖机型层的 `=n`）。
+  USB / SATA / NVMe / 声卡相关已整批下放到 `JDCloud-noWiFi.config`，
+  并在 `ZNM2-noWiFi.config` 里显式 `=n` 关掉（M2 没有这些接口）。
+- **「界面 + 主程序」要两行都写 `=y`**：`DEPENDS` 生成的是 `depends on`，依赖只会被提到 `=m`
+  （编成 ipk、不进固件镜像）。docker 全套、upnp（+`miniupnpd`）都栽过。
+- **`=m` 是刻意的「编成 apk、不进固件」**：`adguardhome` / `lucky` / `vlmcsd` / `easytier`
+  在 `JDCloud-noWiFi.config` 里写成 `=m`（界面 + 主程序 + 中文包三行都要改）。
+  它们的 apk 由 `WRT-CORE.yml` 从 `bin/packages` 挑出来随 Release 发布
+  （Release 默认只收 `bin/targets`，不拷就等于白编）；刷完 `apk add <包名>` 装上，
+  再 `rm -f /tmp/luci-indexcache*` 刷新菜单。依赖同是 `=m`，离线装要连依赖的 apk 一起装。
+  `adguardhome` / `vlmcsd` 在官方 feeds 里，也可走在线源装；`lucky` / `easytier` 官方源没有。
+- **抄别人的清单前先核对符号是否存在**：`nftables`（主干只有 `nftables-json` / `nojson`）、
+  `DOCKER_OPTIONAL_FEATURES`（它 select 的两个符号在 6.x 已移除）这类写了会被静默丢掉。
+- **TEST 只做 `defconfig`、不编译**：补丁打不上、源码下载失败都测不出来，
+  新增大功能后每条要用的源码线至少真编一次。
