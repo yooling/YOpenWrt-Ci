@@ -13,15 +13,16 @@
 
 两台都是**无 WiFi 版**：无线驱动（ath11k 及固件）在各自配置里显式关掉。
 
-## 二、三条源码线
+## 二、两条源码线
 
 每条工作流运行时用一个下拉框选，一次只出一条线的固件。
 
 | 选项         | 仓库 / 分支                          | 内核   | 特点                         |
 | ---------- | -------------------------------- | ---- | -------------------------- |
 | `LibWrt`   | `LiBwrt/LibWrt` @ `25.12-nss`    | 6.12 | NSS 加速 + WiFi 卸载，最成熟       |
-| `OWrt-NSS` | `VIKINGYFY/immortalwrt` @ `main` | 6.18 | NSS 加速                     |
-| `OWrt-PPE` | `VIKINGYFY/immortalwrt` @ `owrt` | 6.18 | PPE 加速（上游新 edma/ppe 架构），追新 |
+| `OWRT`     | `VIKINGYFY/immortalwrt` @ `owrt` | 6.18 | PPE+NSS 融合线（有线走 PPE、WiFi 走 NSS），追新 |
+
+原先的 `OWRT-NSS`（`immortalwrt` @ `main`）上游已于 2026-10-15 停更，2026-11-02 从下拉框移除。
 
 ## 三、目录结构
 
@@ -57,16 +58,17 @@ Config/               自定义配置（.config 后缀）
 - **改完配置先跑测试**：Actions → `WRT-TEST` → 选配置和源码线 → `TEST` 保持 `true` → Run。  
   几分钟出一份 `.config`，能直接看出哪些包被 defconfig 真正选中。
 - **正式出固件**：Actions → `JDCloud-noWiFi` 或 `ZNM2-noWiFi` → 选源码线 → Run（约 1.5~3 小时）。  
-  产物在 Releases：固件 + 本次用的完整 `.config` + 可选插件包 `Packages-*.tar.gz`。  
-  tag 以日期开头（`26.10.23_16.45.49_JDCloud-noWiFi_VIKINGYFY-owrt`），  
+  产物在 Releases：固件 + 本次用的完整 `.config`。  
+  tag 以日期开头（`26.11.02_11.45.00_JDCloud-noWiFi_immortalwrt-owrt`），  
+  源码段取**仓库名**（`LibWrt` / `immortalwrt`），不是账号名，避免 `LiBwrt` 与 `LibWrt` 混淆；  
   发行版列表按时间倒序，越往下越早，不用点开看时间。
 
 刷机后：
 
-- 管理地址：OWrt 线（NSS / PPE）`192.168.10.1`，LibWrt 线 `192.168.20.1`  
+- 管理地址：OWRT 线 `192.168.10.1`，LibWrt 线 `192.168.20.1`  
   （在对应工作流的 `WRT_IP` 里改）
 - 默认密码：空（首次登录时设置）
-- 主机名 / 主题：`OWrt`（或 `LibWrt`，随源码线）/ `argon`
+- 主机名 / 主题：`OWRT`（或 `LibWrt`，与下拉值字面一致）/ `argon`
 
 ## 六、几条规则（都是踩过坑的，别改回去）
 
@@ -81,12 +83,10 @@ Config/               自定义配置（.config 后缀）
   并在 `ZNM2-noWiFi.config` 里显式 `=n` 关掉（M2 没有这些接口）。
 - **「界面 + 主程序」要两行都写 `=y`**：`DEPENDS` 生成的是 `depends on`，依赖只会被提到 `=m`  
   （编成 ipk、不进固件镜像）。docker 全套、upnp（+`miniupnpd`）都栽过。
-- **`=m` 是刻意的「编成 apk、不进固件」**：`adguardhome` / `lucky` / `vlmcsd` / `easytier`  
-  在 `JDCloud-noWiFi.config` 里写成 `=m`（界面 + 主程序 + 中文包三行都要改）。  
-  它们的 apk 由 `WRT-CORE.yml` 从 `bin/packages` 收进 `Packages-*.tar.gz` 一起发布  
-  （Release 默认只收 `bin/targets`，不收就等于白编），包内按插件分目录、附 README。  
-  刷完解压后 `apk add --allow-untrusted <目录>/*.apk`，再 `rm -f /tmp/luci-indexcache*` 刷新菜单。  
-  `adguardhome` / `vlmcsd` 在官方 feeds 里，也可走在线源装；`lucky` / `easytier` 官方源没有。
+- **不再用 `=m`**（2026-11-02 改）：`adguardhome` / `lucky` / `vlmcsd` 在 `JDCloud-noWiFi.config` 里是 `=n`，  
+  `easytier` 直接 `=y` 进固件。`=m` 的产物只落在 `bin/packages`，而 Release 只收 `bin/targets`  
+  （`upload/` 目录），不拷出来就等于白编 —— 真要 `=m`，得自己把 apk 从 `bin/packages` 拷进 `upload/`。  
+  `adguardhome` / `vlmcsd` 在官方 feeds 里，需要时在线 `apk add` 即可；`lucky` / `easytier` 官方源没有。
 - **抄别人的清单前先核对符号是否存在**：`nftables`（主干只有 `nftables-json` / `nojson`）、  
   `DOCKER_OPTIONAL_FEATURES`（它 select 的两个符号在 6.x 已移除）这类写了会被静默丢掉。
 - **TEST 只做 `defconfig`、不编译**：补丁打不上、源码下载失败都测不出来，  
