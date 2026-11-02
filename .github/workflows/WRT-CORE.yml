@@ -114,7 +114,7 @@ jobs:
           #文件名里的日期段保留 - 分隔，tag 里用 _ 分隔，避免两者混淆。
           WRT_NOW=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
           WRT_DATE=${WRT_NOW/_/-}
-          WRT_TAG="${WRT_NOW}_${WRT_CONFIG}_${WRT_SOURCE%%/*}-${WRT_BRANCH//\//-}"
+          WRT_TAG="${WRT_NOW}_${WRT_CONFIG}_${WRT_SOURCE##*/}-${WRT_BRANCH//\//-}"
 
           #固件名里的无线标识由配置名决定（配置名是唯一事实来源）：
           #  含 noWiFi / NO-WIFI / WIFI-NO → noWiFi；含 WiFi / WIFI-YES → WiFi。
@@ -130,7 +130,7 @@ jobs:
           fi
 
           {
-            echo "WRT_INFO=${WRT_SOURCE%%/*}"
+            echo "WRT_INFO=${WRT_SOURCE##*/}"
             echo "WRT_DATE=$WRT_DATE"
             echo "WRT_TAG=$WRT_TAG"
             echo "WRT_MARK=${GITHUB_REPOSITORY%%/*}"
@@ -322,44 +322,9 @@ jobs:
 
             find ./bin/targets/ -type f -exec mv -f {} ./upload/ \;
 
-            #★=m 的包（lucky / adguardhome / vlmcsd / easytier）产出在 ./bin/packages，
-            #  不进固件镜像；Release 只收 ./wrt/upload，不拷出来就等于白编。
-            #  但把一堆 apk 平铺进发行版会把页面搞乱 → 按插件分目录、整体打成一个 tar.gz。
-            #  解压后每个插件一个文件夹（主程序 + LuCI 界面 + 中文包），apk add 整目录即可。
-            if [ -d ./bin/packages ]; then
-              PKG_STAGE=$(mktemp -d)
-              for P in lucky adguardhome vlmcsd easytier; do
-                mkdir -p "$PKG_STAGE/$P"
-                find ./bin/packages -type f \
-                  \( -name "${P}*.apk" -o -name "luci-app-${P}*.apk" -o -name "luci-i18n-${P}*.apk" \) \
-                  -exec cp -f {} "$PKG_STAGE/$P/" \;
-                [ -n "$(ls -A "$PKG_STAGE/$P")" ] || rmdir "$PKG_STAGE/$P"
-              done
-
-              if [ -n "$(ls -A "$PKG_STAGE")" ]; then
-                printf '%s\n' \
-                  "本包是本次编译产出的可选插件（编译时设为 =m，不随固件预装）。" \
-                  "每个目录 = 一个插件，内含 主程序 + LuCI 界面 + 中文语言包。" \
-                  "" \
-                  "安装步骤：" \
-                  "  1. 把需要的目录整个传到路由器，例如 /tmp/pkgs/lucky" \
-                  "  2. apk add --allow-untrusted /tmp/pkgs/lucky/*.apk" \
-                  "  3. rm -f /tmp/luci-indexcache*    # 不删菜单里看不到" \
-                  "  4. /etc/init.d/uhttpd restart     # 可选" \
-                  "" \
-                  "缺依赖时先联网补：apk update && apk add <包名>" \
-                  > "$PKG_STAGE/README.txt"
-
-                PKG_TAR="Packages-$WRT_CONFIG-$WRT_INFO-$WRT_BRANCH-$WRT_DATE.tar.gz"
-                tar -czf "./upload/$PKG_TAR" -C "$PKG_STAGE" .
-                echo "====================== 可选插件包 $PKG_TAR ======================"
-                tar -tzf "./upload/$PKG_TAR"
-                echo "=============================================================="
-              else
-                echo "（本次没有产出 =m 的 apk）"
-              fi
-              rm -rf "$PKG_STAGE"
-            fi
+            #★这里不再打包 =m 的可选插件 apk：
+            #  2026-11-02 起所有插件要么进固件（=y），要么用不到（=n），没有 =m 的产物。
+            #  将来若要恢复，bin/packages 里的 apk 需要自行拷进 upload 才会随 Release 发布。
 
             make clean -j$(nproc)
           fi

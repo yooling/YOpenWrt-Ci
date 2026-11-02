@@ -27,13 +27,12 @@ on:
         required: true
         type: choice
         options:
-          #LibWrt   = LiBwrt/LibWrt        @ 25.12-nss  —— 内核 6.12，NSS 加速 + WiFi 卸载
-          #OWrt-NSS = VIKINGYFY/immortalwrt @ main      —— 内核 6.18，NSS 加速
-          #OWrt-PPE = VIKINGYFY/immortalwrt @ owrt      —— 内核 6.18，PPE 加速（新 edma/ppe 架构）
+          #LibWrt = LiBwrt/LibWrt         @ 25.12-nss  —— 内核 6.12，NSS 加速 + WiFi 卸载
+          #OWRT   = VIKINGYFY/immortalwrt @ owrt       —— 内核 6.18，PPE+NSS 融合线，追新
+          #▲OWRT-NSS（immortalwrt @ main）已于 2026-10-15 停更，2026-11-02 从下拉框移除。
           #▲分支不单独给输入框的原因见下面那段注释（GitHub 表单不支持联动 + 浏览器 autofill）。
           - LibWrt
-          - OWrt-NSS
-          - OWrt-PPE
+          - OWRT
       #★这里不要再加 BRANCH 输入框：
       #GitHub 的 workflow_dispatch 表单不支持联动，选 SOURCE 不会让 BRANCH 自动填值，
       #而浏览器会 autofill 成旧默认值 main。一旦 BRANCH 非空，表达式就会优先用它，
@@ -63,20 +62,21 @@ jobs:
       WRT_CONFIG: ${{inputs.CONFIG}}
       #默认主题
       WRT_THEME: argon
-      #默认主机名：OWrt 两条线都归到 OWrt，LibWrt 归 LibWrt
-      WRT_NAME: ${{inputs.SOURCE == 'LibWrt' && 'LibWrt' || 'OWrt'}}
+      #默认主机名 = 源码线下拉值（LibWrt / OWRT）：两处字面完全一致，不再做映射
+      WRT_NAME: ${{inputs.SOURCE}}
       #默认WIFI名称
-      WRT_SSID: ${{inputs.SOURCE == 'LibWrt' && 'LibWrt' || 'OWrt'}}
+      WRT_SSID: ${{inputs.SOURCE}}
       #默认WIFI密码
       WRT_WORD: 12345678
-      #默认地址：与两条正式工作流同一套规则 —— OWrt 两条线 10.1、LibWrt 20.1
+      #默认地址：与两条正式工作流同一套规则 —— OWRT 线 10.1、LibWrt 线 20.1
       WRT_IP: ${{inputs.SOURCE == 'LibWrt' && '192.168.20.1' || '192.168.10.1'}}
       #默认密码，仅作提示，修改无用
       WRT_PW: 无
       #源码链接
       WRT_REPO: ${{inputs.SOURCE == 'LibWrt' && 'https://github.com/LiBwrt/LibWrt.git' || 'https://github.com/VIKINGYFY/immortalwrt.git'}}
-      #源码分支：LibWrt→25.12-nss；OWrt-PPE→owrt（PPE）；其余→main（NSS）
-      WRT_BRANCH: ${{inputs.SOURCE == 'LibWrt' && '25.12-nss' || (inputs.SOURCE == 'OWrt-PPE' && 'owrt' || 'main')}}
+      #源码分支：LibWrt→25.12-nss；OWRT→owrt。★不再有 main 兜底：
+      #  兜底会让「选项名写错」静默拉到已停更的 main，宁可直接拿不到也不要编错分支。
+      WRT_BRANCH: ${{inputs.SOURCE == 'LibWrt' && '25.12-nss' || 'owrt'}}
       #源码名称
       WRT_SOURCE: ${{inputs.SOURCE == 'LibWrt' && 'LiBwrt/LibWrt' || 'VIKINGYFY/immortalwrt'}}
       #无线标识不用传：TEST 只出 .config，不打包固件

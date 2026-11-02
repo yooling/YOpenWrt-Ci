@@ -17,16 +17,16 @@ on:
         required: true
         type: choice
         options:
-          #LibWrt   = LiBwrt/LibWrt        @ 25.12-nss  —— 内核 6.12，NSS 加速 + WiFi 卸载
-          #OWrt-NSS = VIKINGYFY/immortalwrt @ main      —— 内核 6.18，NSS 加速
-          #OWrt-PPE = VIKINGYFY/immortalwrt @ owrt      —— 内核 6.18，PPE 加速（新 edma/ppe 架构）
+          #LibWrt = LiBwrt/LibWrt         @ 25.12-nss  —— 内核 6.12，NSS 加速 + WiFi 卸载
+          #OWRT   = VIKINGYFY/immortalwrt @ owrt       —— 内核 6.18，PPE+NSS 融合线，追新
+          #▲OWRT-NSS（immortalwrt @ main）已于 2026-10-15 停更，2026-11-02 从下拉框移除；
+          #  以后要 6.18 只走 OWRT。
           #仓库 / 分支 / 主机名全由这一个选项带出，没有第二处要填。
           #▲为什么分支不单独给输入框：GitHub 表单【不支持联动】，选了源码不会自动带出
           #  对应分支；而空输入框会被浏览器 autofill 成旧值 main —— 结果就是
-          #  「选了 PPE 线却拉到 main 分支」。合并成一个下拉后这个坑不存在了。
+          #  「选了 OWRT 线却拉到 main 分支」。合并成一个下拉后这个坑不存在了。
           - LibWrt
-          - OWrt-NSS
-          - OWrt-PPE
+          - OWRT
       PACKAGE:
         description: '手动调整插件包，多个请用\n符号隔开。'
         required: false
@@ -52,21 +52,22 @@ jobs:
       WRT_CONFIG: JDCloud-noWiFi
       #默认主题
       WRT_THEME: argon
-      #默认主机名：OWrt 两条线都归到 OWrt，LibWrt 归 LibWrt
-      WRT_NAME: ${{inputs.SOURCE == 'LibWrt' && 'LibWrt' || 'OWrt'}}
+      #默认主机名 = 源码线下拉值（LibWrt / OWRT）：两处字面完全一致，不再做映射
+      WRT_NAME: ${{inputs.SOURCE}}
       #默认WIFI名称（无 WiFi 版用不到，WRT-CORE 里该字段必填所以照样传）
-      WRT_SSID: ${{inputs.SOURCE == 'LibWrt' && 'LibWrt' || 'OWrt'}}
+      WRT_SSID: ${{inputs.SOURCE}}
       #默认WIFI密码
       WRT_WORD: 12345678
-      #默认地址：按源码线分网段 —— OWrt 两条线 10.1、LibWrt 20.1。
+      #默认地址：按源码线分网段 —— OWRT 线 10.1、LibWrt 线 20.1。
       #  分网段的好处：两条线的固件在同一网络里不会撞 IP，方便对比着刷。
       WRT_IP: ${{inputs.SOURCE == 'LibWrt' && '192.168.20.1' || '192.168.10.1'}}
       #默认密码，仅作提示，修改无用
       WRT_PW: 无
       #源码链接
       WRT_REPO: ${{inputs.SOURCE == 'LibWrt' && 'https://github.com/LiBwrt/LibWrt.git' || 'https://github.com/VIKINGYFY/immortalwrt.git'}}
-      #源码分支：LibWrt→25.12-nss；OWrt-PPE→owrt（PPE）；其余→main（NSS）
-      WRT_BRANCH: ${{inputs.SOURCE == 'LibWrt' && '25.12-nss' || (inputs.SOURCE == 'OWrt-PPE' && 'owrt' || 'main')}}
+      #源码分支：LibWrt→25.12-nss；OWRT→owrt。★不再有 main 兜底：
+      #  兜底会让「选项名写错」静默拉到已停更的 main，宁可直接拿不到也不要编错分支。
+      WRT_BRANCH: ${{inputs.SOURCE == 'LibWrt' && '25.12-nss' || 'owrt'}}
       #源码名称
       WRT_SOURCE: ${{inputs.SOURCE == 'LibWrt' && 'LiBwrt/LibWrt' || 'VIKINGYFY/immortalwrt'}}
       #无线标识不用传：WRT-CORE 按配置名判断（JDCloud-noWiFi → noWiFi），改配置名即可
