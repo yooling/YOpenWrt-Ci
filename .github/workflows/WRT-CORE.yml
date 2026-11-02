@@ -275,6 +275,7 @@ jobs:
               luci-app-easytier easytier luci-app-wolultra \
               zram-swap kmod-zram kmod-lib-lz4 \
               cpufreq luci-app-cpufreq wpad-openssl hostapd-common automount kmod-usb3 nand-utils \
+              luci-app-router-tool kmod-nss-wifi-drv nss-firmware \
               uhttpd nginx nginx-util luci-nginx uwsgi ; do
               VAL=$(grep -m 1 "^CONFIG_PACKAGE_${PKG}=" ./.config | cut -d= -f2- || true)
               #★必须区分这两种「没选上」，含义完全不同：
