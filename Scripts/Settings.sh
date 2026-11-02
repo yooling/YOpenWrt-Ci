@@ -30,6 +30,9 @@ CFG_FILE="./package/base-files/files/bin/config_generate"
 sed -i "s/192\.168\.[0-9]*\.[0-9]*/$WRT_IP/g" $CFG_FILE
 #修改默认主机名
 sed -i "s/hostname='.*'/hostname='$WRT_NAME'/g" $CFG_FILE
+#★校验：上游改过写法（例如换成双引号）时 sed 会静默失配，固件就会沿用源码里的默认主机名
+#  （LibWrt 是 LibWrt、owrt 是 OWRT）—— 编出来才发现就白等两小时，所以这里直接失败。
+grep -q "hostname='$WRT_NAME'" $CFG_FILE || { echo "ERROR: 默认主机名替换失败（$CFG_FILE 里没有 hostname='$WRT_NAME'）"; exit 1; }
 
 #配置文件修改
 echo "CONFIG_PACKAGE_luci=y" >> ./.config
