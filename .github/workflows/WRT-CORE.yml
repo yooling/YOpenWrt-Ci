@@ -72,7 +72,16 @@ env:
 jobs:
   core:
     name: ${{inputs.WRT_SOURCE}}
-    runs-on: ubuntu-latest
+    #★执行机必须钉死 ubuntu-24.04，不许再用 ubuntu-latest：
+    #  GitHub 在 2026-10-19 ~ 11-19 把 ubuntu-latest 逐步从 24.04 迁到 26.04。迁移期内同一个仓库
+    #  可能一次落在 24.04、下一次落在 26.04 —— 工作流一个字没改，编译机却换了系统，最难查。
+    #  26.04 的 /etc/os-release 里 VERSION_CODENAME=resolute，而 Initialization Environment
+    #  拉的 immortalwrt init_build_environment.sh 只认 bionic/focal/jammy/noble 与
+    #  buster/bullseye/bookworm/trixie，认不出就 [ERROR] Unsupported OS 直接 exit 1。
+    #  2026-11-09 那次报错就是这么挂的（apt 装依赖全过，卡在紧接着的系统检查）。
+    #  24.04 = noble，正是上游脚本明确支持的版本，也是本次事故前一直在跑的版本。
+    #  等上游脚本加上 resolute 支持后，这里才可以考虑改回 ubuntu-latest。
+    runs-on: ubuntu-24.04
     outputs:
       cache_prefix: ${{steps.initialize-values.outputs.cache_prefix}}
       cache_key: ${{steps.clone-code.outputs.cache_key}}
@@ -91,6 +100,11 @@ jobs:
           sudo -E apt -yqq autoclean
           sudo -E apt -yqq clean
           sudo -E apt -yqq install dos2unix libfuse-dev
+
+          #先打一行系统信息：runner 镜像换代时，下一行的 init_build_environment.sh 会因为
+          #不认识的 Ubuntu 代号直接退出，日志里至少要能一眼看出跑的是哪个系统。
+          cat /etc/os-release
+
           sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
           sudo -E systemctl daemon-reload
           sudo -E timedatectl set-timezone "Asia/Shanghai"
@@ -355,7 +369,9 @@ jobs:
     name: Roll cache generations
     needs: core
     if: ${{ !inputs.WRT_TEST && needs.core.result == 'success' }}
-    runs-on: ubuntu-latest
+    #跟 core 保持同一个镜像：这里只用 gh CLI，换版本本来不该出问题，
+    #但两个 job 落在不同系统上，出问题时要多排除一个变量。
+    runs-on: ubuntu-24.04
     concurrency:
       group: wrt-cache-rollover-${{github.ref}}-${{needs.core.outputs.cache_prefix}}
       cancel-in-progress: false
